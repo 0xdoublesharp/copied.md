@@ -1,3 +1,6 @@
+// Must be first — shims `document` for micromark's entity decoder in service worker
+import '@/lib/dom-polyfill';
+
 import { getConverter } from '@copied-md/converters';
 import {
   MENU_PARENT_ID,

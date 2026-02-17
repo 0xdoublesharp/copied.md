@@ -13,6 +13,7 @@ export default defineConfig({
       'contextMenus',
       'clipboardWrite',
       'activeTab',
+      'storage',
       ...(browser === 'chrome' ? ['offscreen' as const] : []),
     ],
     icons: {
