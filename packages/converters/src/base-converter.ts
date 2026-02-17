@@ -15,6 +15,14 @@ export abstract class BaseConverter implements PlatformConverter {
 
   abstract convert(markdown: string): ConversionResult;
 
+  /**
+   * Strip HTML tags from a raw HTML string, keeping only text content.
+   * Used to handle `html` type AST nodes (raw HTML embedded in markdown).
+   */
+  protected stripHtmlTags(html: string): string {
+    return html.replace(/<[^>]*>/g, '').trim();
+  }
+
   protected buildResult(payload: ClipboardPayload, originalLength: number): ConversionResult {
     const plainText = payload['text/plain'];
     const truncated = this.maxLength != null && plainText.length > this.maxLength;

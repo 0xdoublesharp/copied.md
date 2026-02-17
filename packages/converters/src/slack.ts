@@ -63,6 +63,8 @@ export class SlackConverter extends BaseConverter {
           })
           .join('\n');
       }
+      case 'html':
+        return this.stripHtmlTags('value' in node ? (node.value as string) : '');
       case 'thematicBreak':
         return '\u2500'.repeat(20);
       case 'table': {
@@ -101,6 +103,8 @@ export class SlackConverter extends BaseConverter {
             return '<' + node.url + '|' + this.processInline(node.children) + '>';
           case 'image':
             return '<' + node.url + '|' + (node.alt || 'image') + '>';
+          case 'html':
+            return this.stripHtmlTags('value' in node ? (node.value as string) : '');
           case 'break':
             return '\n';
           default:
@@ -150,6 +154,8 @@ export class SlackConverter extends BaseConverter {
       }
       case 'thematicBreak':
         return '<hr>';
+      case 'html':
+        return this.escapeHtml(this.stripHtmlTags('value' in node ? (node.value as string) : ''));
       default:
         return '<p>' + ('value' in node ? this.escapeHtml(node.value as string) : '') + '</p>';
     }
@@ -184,6 +190,10 @@ export class SlackConverter extends BaseConverter {
               '" alt="' +
               this.escapeHtml(node.alt || '') +
               '">'
+            );
+          case 'html':
+            return this.escapeHtml(
+              this.stripHtmlTags('value' in node ? (node.value as string) : ''),
             );
           case 'break':
             return '<br>';

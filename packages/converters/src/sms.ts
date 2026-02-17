@@ -49,6 +49,8 @@ export class SmsConverter extends BaseConverter {
           })
           .join('\n');
       }
+      case 'html':
+        return this.stripHtmlTags('value' in node ? (node.value as string) : '');
       case 'thematicBreak':
         return '---';
       case 'table': {

@@ -73,6 +73,8 @@ export class TelegramConverter extends BaseConverter {
           })
           .join('\n');
       }
+      case 'html':
+        return this.escapeText(this.stripHtmlTags('value' in node ? (node.value as string) : ''));
       case 'thematicBreak':
         return this.escapeText('---');
       case 'table': {
@@ -110,11 +112,15 @@ export class TelegramConverter extends BaseConverter {
             return '`' + node.value + '`';
           case 'link': {
             const text = this.processInline(node.children);
-            return '[' + text + '](' + this.escapeText(node.url) + ')';
+            // URLs inside link parentheses are not escaped in MarkdownV2
+            return '[' + text + '](' + node.url + ')';
           }
           case 'image':
-            return (
-              '[' + this.escapeText(node.alt || 'image') + '](' + this.escapeText(node.url) + ')'
+            // URLs inside link parentheses are not escaped in MarkdownV2
+            return '[' + this.escapeText(node.alt || 'image') + '](' + node.url + ')';
+          case 'html':
+            return this.escapeText(
+              this.stripHtmlTags('value' in node ? (node.value as string) : ''),
             );
           case 'break':
             return '\n';
@@ -162,6 +168,8 @@ export class TelegramConverter extends BaseConverter {
           })
           .join('');
       }
+      case 'html':
+        return this.escapeHtml(this.stripHtmlTags('value' in node ? (node.value as string) : ''));
       default:
         return 'value' in node ? this.escapeHtml(node.value as string) : '';
     }
@@ -188,6 +196,10 @@ export class TelegramConverter extends BaseConverter {
               '">' +
               this.processInlineHtml(node.children) +
               '</a>'
+            );
+          case 'html':
+            return this.escapeHtml(
+              this.stripHtmlTags('value' in node ? (node.value as string) : ''),
             );
           case 'break':
             return '\n';

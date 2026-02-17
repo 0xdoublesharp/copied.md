@@ -58,6 +58,8 @@ export class TwitterConverter extends BaseConverter {
           })
           .join('\n');
       }
+      case 'html':
+        return this.stripHtmlTags('value' in node ? (node.value as string) : '');
       case 'thematicBreak':
         return '';
       case 'table': {
@@ -112,6 +114,8 @@ export class TwitterConverter extends BaseConverter {
             return node.url;
           case 'image':
             return node.url;
+          case 'html':
+            return this.stripHtmlTags('value' in node ? (node.value as string) : '');
           case 'break':
             return '\n';
           default:

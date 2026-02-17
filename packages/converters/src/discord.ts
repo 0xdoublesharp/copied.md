@@ -54,6 +54,8 @@ export class DiscordConverter extends BaseConverter {
           })
           .join('\n');
       }
+      case 'html':
+        return this.stripHtmlTags('value' in node ? (node.value as string) : '');
       case 'thematicBreak':
         return '---';
       case 'table': {
@@ -93,6 +95,8 @@ export class DiscordConverter extends BaseConverter {
             return this.processInline(node.children) + ' (<' + node.url + '>)';
           case 'image':
             return node.url;
+          case 'html':
+            return this.stripHtmlTags('value' in node ? (node.value as string) : '');
           case 'break':
             return '\n';
           default:

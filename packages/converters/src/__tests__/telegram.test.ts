@@ -47,10 +47,11 @@ describe('TelegramConverter', () => {
     expect(result.payload['text/plain']).toContain('\\-');
   });
 
-  it('preserves link syntax', () => {
+  it('preserves link syntax with unescaped URL', () => {
     const result = converter.convert(FIXTURES.link);
     expect(result.payload['text/plain']).toContain('[Example]');
-    expect(result.payload['text/plain']).toContain('example\\.com');
+    // URLs inside link parentheses are not escaped in MarkdownV2
+    expect(result.payload['text/plain']).toContain('(https://example.com)');
   });
 
   it('preserves blockquotes', () => {
@@ -80,5 +81,14 @@ describe('TelegramConverter', () => {
     const result = converter.convert(FIXTURES.complex);
     expect(result.payload['text/plain']).toContain('*Report*');
     expect(result.truncated).toBe(false);
+  });
+
+  it('strips raw HTML tags from input', () => {
+    const result = converter.convert('## <a id="intro"></a>Introduction\n\nSome text');
+    const plain = result.payload['text/plain']!;
+    expect(plain).not.toContain('<a');
+    expect(plain).not.toContain('</a>');
+    expect(plain).toContain('*Introduction*');
+    expect(plain).toContain('Some text');
   });
 });

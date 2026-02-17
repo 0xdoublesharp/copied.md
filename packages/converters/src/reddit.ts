@@ -82,6 +82,8 @@ export class RedditConverter extends BaseConverter {
           ...bodyRows.map((r) => '| ' + r + ' |'),
         ].join('\n');
       }
+      case 'html':
+        return this.stripHtmlTags('value' in node ? (node.value as string) : '');
       case 'thematicBreak':
         return '---';
       default:
@@ -107,6 +109,8 @@ export class RedditConverter extends BaseConverter {
             return '[' + this.processInline(node.children) + '](' + node.url + ')';
           case 'image':
             return '![' + (node.alt || '') + '](' + node.url + ')';
+          case 'html':
+            return this.stripHtmlTags('value' in node ? (node.value as string) : '');
           case 'break':
             return '  \n';
           default:

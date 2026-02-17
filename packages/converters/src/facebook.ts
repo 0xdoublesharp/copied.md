@@ -68,6 +68,8 @@ export class FacebookConverter extends BaseConverter {
           })
           .join('\n');
       }
+      case 'html':
+        return this.stripHtmlTags('value' in node ? (node.value as string) : '');
       case 'thematicBreak':
         return '\u2500'.repeat(20);
       case 'table': {
@@ -122,6 +124,8 @@ export class FacebookConverter extends BaseConverter {
             return this.processInline(node.children, style) + ' (' + node.url + ')';
           case 'image':
             return (node.alt || 'image') + ' (' + node.url + ')';
+          case 'html':
+            return this.stripHtmlTags('value' in node ? (node.value as string) : '');
           case 'break':
             return '\n';
           default:
@@ -171,6 +175,8 @@ export class FacebookConverter extends BaseConverter {
       }
       case 'thematicBreak':
         return '<hr>';
+      case 'html':
+        return this.escapeHtml(this.stripHtmlTags('value' in node ? (node.value as string) : ''));
       default:
         return 'value' in node ? this.escapeHtml(node.value as string) : '';
     }
@@ -205,6 +211,10 @@ export class FacebookConverter extends BaseConverter {
               '" alt="' +
               this.escapeHtml(node.alt || '') +
               '">'
+            );
+          case 'html':
+            return this.escapeHtml(
+              this.stripHtmlTags('value' in node ? (node.value as string) : ''),
             );
           case 'break':
             return '<br>';
