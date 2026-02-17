@@ -40,6 +40,14 @@ export default [
     },
   },
   {
-    ignores: ['.output/', '**/.wxt/', 'node_modules/', 'dist/', 'coverage/'],
+    ignores: [
+      '.output/',
+      '**/.output/',
+      '**/.wxt/',
+      'node_modules/',
+      '**/node_modules/',
+      'dist/',
+      'coverage/',
+    ],
   },
 ];
