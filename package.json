@@ -12,13 +12,20 @@
     "dev:firefox": "pnpm --filter @copied-md/extension dev:firefox",
     "build": "pnpm --filter @copied-md/extension build",
     "build:firefox": "pnpm --filter @copied-md/extension build:firefox",
+    "build:edge": "pnpm --filter @copied-md/extension build:edge",
+    "build:all": "pnpm build && pnpm build:firefox && pnpm build:edge",
+    "zip": "pnpm --filter @copied-md/extension zip",
+    "zip:firefox": "pnpm --filter @copied-md/extension zip:firefox",
     "test": "pnpm -r test",
+    "test:watch": "pnpm -r --parallel test:watch",
     "test:coverage": "pnpm -r test:coverage",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "typecheck": "pnpm -r typecheck"
+    "typecheck": "pnpm -r typecheck",
+    "check": "pnpm typecheck && pnpm lint && pnpm format:check && pnpm test",
+    "clean": "pnpm -r exec rm -rf dist .output .wxt coverage"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
