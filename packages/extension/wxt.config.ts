@@ -3,6 +3,7 @@ import tailwindcss from '@tailwindcss/vite';
 
 export default defineConfig({
   srcDir: 'src',
+  outDir: 'build',
   modules: ['@wxt-dev/module-vue'],
   manifest: ({ browser }) => ({
     name: 'copied.md',

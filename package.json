@@ -25,7 +25,7 @@
     "format:check": "prettier --check .",
     "typecheck": "pnpm -r typecheck",
     "check": "pnpm typecheck && pnpm lint && pnpm format:check && pnpm test",
-    "clean": "pnpm -r exec rm -rf dist .output .wxt coverage"
+    "clean": "pnpm -r exec rm -rf dist build .wxt coverage"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

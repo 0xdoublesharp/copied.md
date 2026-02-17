@@ -41,8 +41,8 @@ export default [
   },
   {
     ignores: [
-      '.output/',
-      '**/.output/',
+      'build/',
+      '**/build/',
       '**/.wxt/',
       'node_modules/',
       '**/node_modules/',
