@@ -34,9 +34,7 @@ export class RedditConverter extends BaseConverter {
         return `${prefix} ${content}`;
       }
       case 'paragraph':
-        return this.processInline(
-          'children' in node ? (node.children as PhrasingContent[]) : [],
-        );
+        return this.processInline('children' in node ? (node.children as PhrasingContent[]) : []);
       case 'blockquote': {
         const children = 'children' in node ? (node.children as BlockContent[]) : [];
         return children.map((child) => '> ' + this.processBlock(child)).join('\n');
@@ -78,7 +76,11 @@ export class RedditConverter extends BaseConverter {
             .join(' | ');
         });
 
-        return ['| ' + header + ' |', '| ' + separator + ' |', ...bodyRows.map((r) => '| ' + r + ' |')].join('\n');
+        return [
+          '| ' + header + ' |',
+          '| ' + separator + ' |',
+          ...bodyRows.map((r) => '| ' + r + ' |'),
+        ].join('\n');
       }
       case 'thematicBreak':
         return '---';

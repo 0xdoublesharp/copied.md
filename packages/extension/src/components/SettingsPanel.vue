@@ -42,11 +42,7 @@ watch(
         v-model="settings.defaultPlatform"
         class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
       >
-        <option
-          v-for="p in platforms"
-          :key="p.id"
-          :value="p.id"
-        >
+        <option v-for="p in platforms" :key="p.id" :value="p.id">
           {{ p.label }}
         </option>
       </select>
@@ -54,20 +50,12 @@ watch(
 
     <div class="flex items-center justify-between">
       <label class="text-sm">Show notifications</label>
-      <input
-        v-model="settings.showNotifications"
-        type="checkbox"
-        class="rounded"
-      >
+      <input v-model="settings.showNotifications" type="checkbox" class="rounded" />
     </div>
 
     <div class="flex items-center justify-between">
       <label class="text-sm">Auto-close after copy</label>
-      <input
-        v-model="settings.autoClose"
-        type="checkbox"
-        class="rounded"
-      >
+      <input v-model="settings.autoClose" type="checkbox" class="rounded" />
     </div>
   </div>
 </template>

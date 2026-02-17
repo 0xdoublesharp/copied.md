@@ -33,9 +33,7 @@ export class DiscordConverter extends BaseConverter {
         return `**${content}**`;
       }
       case 'paragraph':
-        return this.processInline(
-          'children' in node ? (node.children as PhrasingContent[]) : [],
-        );
+        return this.processInline('children' in node ? (node.children as PhrasingContent[]) : []);
       case 'blockquote': {
         const children = 'children' in node ? (node.children as BlockContent[]) : [];
         return children.map((child) => '> ' + this.processBlock(child)).join('\n');

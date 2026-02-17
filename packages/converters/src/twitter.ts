@@ -101,15 +101,9 @@ export class TwitterConverter extends BaseConverter {
             }
           }
           case 'strong':
-            return this.processInline(
-              node.children,
-              style === 'italic' ? 'bolditalic' : 'bold',
-            );
+            return this.processInline(node.children, style === 'italic' ? 'bolditalic' : 'bold');
           case 'emphasis':
-            return this.processInline(
-              node.children,
-              style === 'bold' ? 'bolditalic' : 'italic',
-            );
+            return this.processInline(node.children, style === 'bold' ? 'bolditalic' : 'italic');
           case 'delete':
             return this.processInline(node.children, style);
           case 'inlineCode':

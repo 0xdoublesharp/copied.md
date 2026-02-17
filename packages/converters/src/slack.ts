@@ -43,9 +43,7 @@ export class SlackConverter extends BaseConverter {
         return `*${content}*`;
       }
       case 'paragraph':
-        return this.processInline(
-          'children' in node ? (node.children as PhrasingContent[]) : [],
-        );
+        return this.processInline('children' in node ? (node.children as PhrasingContent[]) : []);
       case 'blockquote': {
         const children = 'children' in node ? (node.children as BlockContent[]) : [];
         return children.map((child) => '> ' + this.processBlock(child)).join('\n');
@@ -125,14 +123,14 @@ export class SlackConverter extends BaseConverter {
       case 'paragraph':
         return (
           '<p>' +
-          this.processInlineHtml(
-            'children' in node ? (node.children as PhrasingContent[]) : [],
-          ) +
+          this.processInlineHtml('children' in node ? (node.children as PhrasingContent[]) : []) +
           '</p>'
         );
       case 'blockquote': {
         const children = 'children' in node ? (node.children as BlockContent[]) : [];
-        return '<blockquote>' + children.map((c) => this.processBlockHtml(c)).join('') + '</blockquote>';
+        return (
+          '<blockquote>' + children.map((c) => this.processBlockHtml(c)).join('') + '</blockquote>'
+        );
       }
       case 'code': {
         const value = 'value' in node ? (node.value as string) : '';
@@ -180,7 +178,13 @@ export class SlackConverter extends BaseConverter {
               '</a>'
             );
           case 'image':
-            return '<img src="' + this.escapeHtml(node.url) + '" alt="' + this.escapeHtml(node.alt || '') + '">';
+            return (
+              '<img src="' +
+              this.escapeHtml(node.url) +
+              '" alt="' +
+              this.escapeHtml(node.alt || '') +
+              '">'
+            );
           case 'break':
             return '<br>';
           default:

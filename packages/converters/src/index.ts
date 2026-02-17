@@ -12,16 +12,15 @@ import { SmsConverter } from './sms';
 import { RedditConverter } from './reddit';
 import { HtmlConverter } from './html';
 
-const converters: Map<Platform, PlatformConverter> = new Map([
-  [Platform.Facebook, new FacebookConverter()],
-  [Platform.Twitter, new TwitterConverter()],
-  [Platform.Slack, new SlackConverter()],
-  [Platform.Discord, new DiscordConverter()],
-  [Platform.Telegram, new TelegramConverter()],
-  [Platform.SMS, new SmsConverter()],
-  [Platform.Reddit, new RedditConverter()],
-  [Platform.HTML, new HtmlConverter()],
-]);
+const converters = new Map<Platform, PlatformConverter>();
+converters.set(Platform.Facebook, new FacebookConverter());
+converters.set(Platform.Twitter, new TwitterConverter());
+converters.set(Platform.Slack, new SlackConverter());
+converters.set(Platform.Discord, new DiscordConverter());
+converters.set(Platform.Telegram, new TelegramConverter());
+converters.set(Platform.SMS, new SmsConverter());
+converters.set(Platform.Reddit, new RedditConverter());
+converters.set(Platform.HTML, new HtmlConverter());
 
 export function getConverter(platform: Platform): PlatformConverter {
   const converter = converters.get(platform);

@@ -58,9 +58,7 @@ function showToast(platform: string, truncated: boolean) {
 
   const toast = document.createElement('div');
   toast.id = 'copied-md-toast';
-  toast.textContent = truncated
-    ? `Copied for ${platform} (truncated)`
-    : `Copied for ${platform}`;
+  toast.textContent = truncated ? `Copied for ${platform} (truncated)` : `Copied for ${platform}`;
 
   Object.assign(toast.style, {
     position: 'fixed',

@@ -4,7 +4,7 @@ import { Platform } from './types';
 import type { ConversionResult } from './types';
 
 // Characters that must be escaped in Telegram MarkdownV2 text content
-const TELEGRAM_SPECIAL_CHARS = /([_*\[\]()~`>#+\-=|{}.!\\])/g;
+const TELEGRAM_SPECIAL_CHARS = /([_*[\]()~`>#+\-=|{}.!\\])/g;
 
 export class TelegramConverter extends BaseConverter {
   readonly platform = Platform.Telegram;
@@ -49,9 +49,7 @@ export class TelegramConverter extends BaseConverter {
         return `*${content}*`;
       }
       case 'paragraph':
-        return this.processInline(
-          'children' in node ? (node.children as PhrasingContent[]) : [],
-        );
+        return this.processInline('children' in node ? (node.children as PhrasingContent[]) : []);
       case 'blockquote': {
         const children = 'children' in node ? (node.children as BlockContent[]) : [];
         return children.map((child) => '> ' + this.processBlock(child)).join('\n');
@@ -85,9 +83,7 @@ export class TelegramConverter extends BaseConverter {
           return cells
             .map((cell) => {
               const content = 'children' in cell ? (cell.children as PhrasingContent[]) : [];
-              return content
-                .map((n) => ('value' in n ? (n.value as string) : ''))
-                .join('');
+              return content.map((n) => ('value' in n ? (n.value as string) : '')).join('');
             })
             .join(' | ');
         });
@@ -117,7 +113,9 @@ export class TelegramConverter extends BaseConverter {
             return '[' + text + '](' + this.escapeText(node.url) + ')';
           }
           case 'image':
-            return '[' + this.escapeText(node.alt || 'image') + '](' + this.escapeText(node.url) + ')';
+            return (
+              '[' + this.escapeText(node.alt || 'image') + '](' + this.escapeText(node.url) + ')'
+            );
           case 'break':
             return '\n';
           default:
@@ -138,13 +136,16 @@ export class TelegramConverter extends BaseConverter {
       }
       case 'paragraph':
         return (
-          this.processInlineHtml(
-            'children' in node ? (node.children as PhrasingContent[]) : [],
-          ) + '\n'
+          this.processInlineHtml('children' in node ? (node.children as PhrasingContent[]) : []) +
+          '\n'
         );
       case 'blockquote': {
         const children = 'children' in node ? (node.children as BlockContent[]) : [];
-        return '<blockquote>' + children.map((c) => this.processBlockHtml(c)).join('') + '</blockquote>\n';
+        return (
+          '<blockquote>' +
+          children.map((c) => this.processBlockHtml(c)).join('') +
+          '</blockquote>\n'
+        );
       }
       case 'code': {
         const value = 'value' in node ? (node.value as string) : '';
@@ -198,9 +199,6 @@ export class TelegramConverter extends BaseConverter {
   }
 
   private escapeHtml(text: string): string {
-    return text
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;');
+    return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
   }
 }

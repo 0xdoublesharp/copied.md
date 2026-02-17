@@ -1,5 +1,4 @@
 import type { Node } from 'mdast';
-import { visit } from 'unist-util-visit';
 import { toString } from 'mdast-util-to-string';
 import { BaseConverter } from './base-converter';
 import { Platform } from './types';

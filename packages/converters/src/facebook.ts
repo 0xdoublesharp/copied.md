@@ -111,15 +111,9 @@ export class FacebookConverter extends BaseConverter {
             }
           }
           case 'strong':
-            return this.processInline(
-              node.children,
-              style === 'italic' ? 'bolditalic' : 'bold',
-            );
+            return this.processInline(node.children, style === 'italic' ? 'bolditalic' : 'bold');
           case 'emphasis':
-            return this.processInline(
-              node.children,
-              style === 'bold' ? 'bolditalic' : 'italic',
-            );
+            return this.processInline(node.children, style === 'bold' ? 'bolditalic' : 'italic');
           case 'delete':
             return this.processInline(node.children, style);
           case 'inlineCode':
@@ -150,14 +144,14 @@ export class FacebookConverter extends BaseConverter {
       case 'paragraph':
         return (
           '<p>' +
-          this.processInlineHtml(
-            'children' in node ? (node.children as PhrasingContent[]) : [],
-          ) +
+          this.processInlineHtml('children' in node ? (node.children as PhrasingContent[]) : []) +
           '</p>'
         );
       case 'blockquote': {
         const children = 'children' in node ? (node.children as BlockContent[]) : [];
-        return '<blockquote>' + children.map((c) => this.processBlockHtml(c)).join('') + '</blockquote>';
+        return (
+          '<blockquote>' + children.map((c) => this.processBlockHtml(c)).join('') + '</blockquote>'
+        );
       }
       case 'code': {
         const value = 'value' in node ? (node.value as string) : '';
@@ -205,7 +199,13 @@ export class FacebookConverter extends BaseConverter {
               '</a>'
             );
           case 'image':
-            return '<img src="' + this.escapeHtml(node.url) + '" alt="' + this.escapeHtml(node.alt || '') + '">';
+            return (
+              '<img src="' +
+              this.escapeHtml(node.url) +
+              '" alt="' +
+              this.escapeHtml(node.alt || '') +
+              '">'
+            );
           case 'break':
             return '<br>';
           default:

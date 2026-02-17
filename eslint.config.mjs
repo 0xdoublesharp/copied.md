@@ -25,6 +25,21 @@ export default [
     },
   },
   {
-    ignores: ['.output/', '.wxt/', 'node_modules/', 'dist/', 'coverage/'],
+    files: ['**/*.vue'],
+    languageOptions: {
+      globals: {
+        navigator: 'readonly',
+        document: 'readonly',
+        ClipboardItem: 'readonly',
+        Blob: 'readonly',
+        setTimeout: 'readonly',
+        requestAnimationFrame: 'readonly',
+        crypto: 'readonly',
+        console: 'readonly',
+      },
+    },
+  },
+  {
+    ignores: ['.output/', '**/.wxt/', 'node_modules/', 'dist/', 'coverage/'],
   },
 ];

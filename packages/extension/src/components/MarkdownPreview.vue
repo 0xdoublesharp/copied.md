@@ -35,35 +35,19 @@ async function copyToClipboard() {
 </script>
 
 <template>
-  <div
-    v-if="ui.selectedPlatform && ui.inputMarkdown.trim()"
-    class="mt-3 space-y-2"
-  >
+  <div v-if="ui.selectedPlatform && ui.inputMarkdown.trim()" class="mt-3 space-y-2">
     <div class="flex items-center justify-between">
       <h3 class="text-sm font-medium">Preview</h3>
       <div class="flex items-center gap-2">
-        <span
-          v-if="ui.isTruncated"
-          class="text-xs text-destructive"
-        >
-          Truncated
-        </span>
-        <span
-          v-if="ui.hasHtml"
-          class="text-xs text-muted-foreground"
-        >
-          Rich text
-        </span>
+        <span v-if="ui.isTruncated" class="text-xs text-destructive"> Truncated </span>
+        <span v-if="ui.hasHtml" class="text-xs text-muted-foreground"> Rich text </span>
       </div>
     </div>
     <pre
       class="rounded-md border bg-muted p-3 text-xs max-h-32 overflow-auto whitespace-pre-wrap break-words"
-    >{{ ui.previewText }}</pre>
-    <Button
-      class="w-full"
-      :variant="ui.copied ? 'secondary' : 'default'"
-      @click="copyToClipboard"
+      >{{ ui.previewText }}</pre
     >
+    <Button class="w-full" :variant="ui.copied ? 'secondary' : 'default'" @click="copyToClipboard">
       {{ ui.copied ? 'Copied!' : 'Copy to Clipboard' }}
     </Button>
   </div>
