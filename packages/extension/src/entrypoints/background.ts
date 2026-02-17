@@ -43,20 +43,13 @@ export default defineBackground(() => {
       const converter = getConverter(platform);
       const result = converter.convert(selectedText);
 
-      await writeToClipboard(result.payload);
-
-      // Notify the content script to show a toast
-      if (tab?.id) {
-        try {
-          await browser.tabs.sendMessage(tab.id, {
-            type: 'COPY_SUCCESS',
-            platform: PLATFORM_LABELS[platform],
-            truncated: result.truncated,
-          });
-        } catch {
-          // Content script may not be injected on this page
-        }
-      }
+      // Send payload to content script for clipboard write + toast notification
+      await writeToClipboard(
+        result.payload,
+        tab?.id,
+        PLATFORM_LABELS[platform],
+        result.truncated,
+      );
     } catch (error) {
       console.error('copied.md: conversion failed', error);
     }

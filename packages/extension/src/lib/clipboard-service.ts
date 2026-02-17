@@ -1,18 +1,45 @@
 import type { ClipboardPayload } from '@copied-md/converters';
 
-export async function writeToClipboard(payload: ClipboardPayload): Promise<void> {
-  // Try offscreen document approach first (Chrome)
-  if (typeof chrome !== 'undefined' && chrome.offscreen) {
-    await writeViaOffscreen(payload);
-    return;
+export interface ClipboardWriteMessage {
+  type: 'WRITE_CLIPBOARD';
+  payload: ClipboardPayload;
+  platform: string;
+  truncated: boolean;
+}
+
+/**
+ * Write to clipboard via the content script running in the active tab.
+ * The content script has page focus and can use the Clipboard API reliably.
+ * Falls back to the offscreen document if content script is unavailable.
+ */
+export async function writeToClipboard(
+  payload: ClipboardPayload,
+  tabId: number | undefined,
+  platform: string,
+  truncated: boolean,
+): Promise<void> {
+  // Primary: send to the content script in the active tab
+  if (tabId) {
+    try {
+      await browser.tabs.sendMessage(tabId, {
+        type: 'WRITE_CLIPBOARD',
+        payload,
+        platform,
+        truncated,
+      } satisfies ClipboardWriteMessage);
+      return;
+    } catch {
+      // Content script not available on this page — fall through to offscreen
+    }
   }
 
-  // Fallback: send to active tab's content script
-  await writeViaContentScript(payload);
+  // Fallback: offscreen document (Chrome only, for pages without content scripts)
+  if (typeof chrome !== 'undefined' && chrome.offscreen) {
+    await writeViaOffscreen(payload);
+  }
 }
 
 async function writeViaOffscreen(payload: ClipboardPayload): Promise<void> {
-  // Ensure offscreen document exists
   if (chrome.runtime.getContexts) {
     const contexts = await chrome.runtime.getContexts({
       contextTypes: ['OFFSCREEN_DOCUMENT' as chrome.runtime.ContextType],
@@ -25,7 +52,6 @@ async function writeViaOffscreen(payload: ClipboardPayload): Promise<void> {
       });
     }
   } else {
-    // Fallback for older Chrome — try creating, ignore error if already exists
     try {
       await chrome.offscreen.createDocument({
         url: 'offscreen.html',
@@ -41,14 +67,4 @@ async function writeViaOffscreen(payload: ClipboardPayload): Promise<void> {
     type: 'WRITE_CLIPBOARD',
     payload,
   });
-}
-
-async function writeViaContentScript(payload: ClipboardPayload): Promise<void> {
-  const [tab] = await browser.tabs.query({ active: true, currentWindow: true });
-  if (tab?.id) {
-    await browser.tabs.sendMessage(tab.id, {
-      type: 'WRITE_CLIPBOARD',
-      payload,
-    });
-  }
 }

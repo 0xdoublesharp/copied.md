@@ -4,13 +4,15 @@ export default defineContentScript({
     browser.runtime.onMessage.addListener((message, _sender, sendResponse) => {
       if (message.type === 'WRITE_CLIPBOARD') {
         handleClipboardWrite(message.payload)
-          .then(() => sendResponse({ success: true }))
+          .then(() => {
+            // Show toast after successful clipboard write
+            if (message.platform) {
+              showToast(message.platform, message.truncated ?? false);
+            }
+            sendResponse({ success: true });
+          })
           .catch((err) => sendResponse({ success: false, error: String(err) }));
         return true;
-      }
-
-      if (message.type === 'COPY_SUCCESS') {
-        showToast(message.platform, message.truncated);
       }
     });
   },
