@@ -1,19 +1,16 @@
 #!/bin/sh
 set -eu
 
-if [ ! -d /Volumes/Scratch ]; then
-  printf '%s\n' 'Mount /Volumes/Scratch before building the app.' >&2
-  exit 1
-fi
-
 source_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 repo_dir=$(CDPATH= cd -- "$source_dir/../.." && pwd)
-output=${COPIED_MD_APP_OUT:-/Volumes/Scratch/copied-md/build/portable}
-runtime=${COPIED_MD_NODE_CACHE:-/Volumes/Scratch/copied-md/tmp/macos-runtimes}
+output=${COPIED_MD_APP_OUT:-$repo_dir/build/portable}
+runtime=${COPIED_MD_NODE_CACHE:-$repo_dir/build/macos-runtimes}
 version=24.22.1
 identity=${COPIED_MD_SIGN_IDENTITY:--}
 
 mkdir -p "$output" "$runtime"
+output=$(CDPATH= cd -- "$output" && pwd)
+runtime=$(CDPATH= cd -- "$runtime" && pwd)
 if [ -e "$output/copied.md.app" ] || [ -e "$output/copied-md-macos-universal.zip" ]; then
   printf '%s\n' 'The output already contains a copied.md package. Choose a new COPIED_MD_APP_OUT directory.' >&2
   exit 1
@@ -65,7 +62,7 @@ done
 xcrun lipo -create "$stage/copied-md-arm64" "$stage/copied-md-x86_64" -output "$app/Contents/MacOS/copied-md"
 
 mkdir "$stage/AppIcon.iconset"
-icon="$repo_dir/apps/browser-extension/src/public/icon-128.png"
+icon="$repo_dir/assets/copied-md.png"
 for size in 16 32 128 256 512; do
   sips -z "$size" "$size" "$icon" --out "$stage/AppIcon.iconset/icon_${size}x${size}.png" >/dev/null
   double=$((size * 2))

@@ -1,19 +1,19 @@
-# copied.md for macOS
+# macOS build and packaging
 
-## Product behavior
+The menu-bar app supports macOS 13.5 or later on Apple silicon and Intel. It bundles the same converter as the CLI and a matching universal Node runtime.
 
-A single menu-bar app provides the conversion flow. Open it once and the default global shortcut is available immediately. The first-launch popover shows the key and offers Copy from Clipboard. Reopening the app shows the same controls.
+With Xcode Command Line Tools and the repository dependencies installed, run `pnpm build:macos-app`. It writes `copied.md.app` and `copied-md-macos-universal.zip` under `build/portable`. Set `COPIED_MD_APP_OUT` to use a different output directory. Set `COPIED_MD_NODE_CACHE` to override the runtime archive cache at `build/macos-runtimes`.
 
-The app registers Control–Option–Command–M through the system hotkey API. The menu can rebind, disable, or reset it and always offers the picker. A failed rebind keeps the previous working key. Quitting releases the key. Launch at Login is opt-in.
+Run `pnpm build:macos` for the standalone pasteboard helper. Set `COPIED_MD_MACOS_OUT` to override its default output at `build/macos`.
 
-The system clipboard is read when the user invokes conversion. The app snapshots it before showing the native picker and checks its change count before writing the result. It writes plain text and, where available, HTML. Canceling leaves the clipboard ready for the previous paste. Conversion is local and uses the shared TypeScript converter.
+## Signing and checks
 
-## Packaging decision
+The default build uses a local ad-hoc signature. Set `COPIED_MD_SIGN_IDENTITY` to a Developer ID Application identity for a distributable build, then notarize the package before distributing it.
 
-Gemini recommended trying JavaScriptCore for a smaller bundle. The probe reproduced a fidelity regression on a standard HTTPS link because the bare context lacks the URL API. The universal bundle includes a verified Node runtime and the compiled converter, so desktop output uses the same runtime behavior as the CLI. Both runtime slices require macOS 13.5.
+Run the bundled executable with `--self-test` to check converter output, isolated pasteboard writes, stale-write protection, and hotkey registration.
 
-A developer build is locally signed. Developer ID signing and notarization are the release gates for a downloaded build on another Mac.
+```sh
+build/portable/copied.md.app/Contents/MacOS/copied-md --self-test
+```
 
-## Verification
-
-Run the packaged app’s `--self-test` as arm64 and x86_64 in a clean environment. It exercises the packaged converter, both pasteboard flavors, stale-write protection, and system hotkey registration and release. The interactive acceptance check presses the key from another app and verifies that the picker appears without Shortcuts setup.
+Open the app and press `⌃⌥⌘M` from another app to check the picker. The app reads the copied Markdown when invoked and checks the clipboard’s change count before writing the selected format. Canceling the picker preserves the clipboard.

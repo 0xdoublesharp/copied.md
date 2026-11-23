@@ -11,6 +11,8 @@ export default defineConfig({
     sourcesRoot: fileURLToPath(new URL('../../', import.meta.url)),
     includeSources: [
       'README.md',
+      'assets/*.png',
+      'docs/portable-macos-app.md',
       'package.json',
       'pnpm-workspace.yaml',
       'pnpm-lock.yaml',
