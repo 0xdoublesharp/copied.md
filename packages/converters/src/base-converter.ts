@@ -13,10 +13,8 @@ export abstract class BaseConverter implements PlatformConverter {
     const { tree } = readMarkdown(md);
     const numbers = footnoteNumbers(tree);
     visit(tree, 'footnoteReference', (node, index, parent) => {
-      if (index !== undefined && parent) {
-        parent.children[index] = { type: 'text', value: '[' + numbers.get(node.identifier) + ']' };
-        return [SKIP, index + 1];
-      }
+      parent!.children[index!] = { type: 'text', value: '[' + numbers.get(node.identifier) + ']' };
+      return [SKIP, index! + 1];
     });
     tree.children = tree.children.flatMap<RootContent>((node) => {
       if (node.type !== 'footnoteDefinition') return [node];

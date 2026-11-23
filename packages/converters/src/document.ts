@@ -30,60 +30,47 @@ export function readMarkdown(markdown: string, sourceUrl?: string) {
     if (!definitions.has(node.identifier)) definitions.set(node.identifier, node);
   });
 
-  visit(tree, (node, index, parent) => {
-    if (!parent || index === undefined) return;
-    if (
-      node.type !== 'link' &&
-      node.type !== 'image' &&
-      node.type !== 'linkReference' &&
-      node.type !== 'imageReference'
-    )
-      return;
+  // Remark supplies a definition for reference nodes and a string alt for image nodes.
+  visit(
+    tree,
+    ['link', 'image', 'linkReference', 'imageReference'] as const,
+    (node, index, parent) => {
+      const definition = 'identifier' in node ? definitions.get(node.identifier)! : node;
+      const destination = definition.url;
+      const url = destination && safeUrl(destination, sourceUrl);
 
-    const definition = 'identifier' in node ? definitions.get(node.identifier) : node;
-    const destination = definition?.url;
-    const url = destination && safeUrl(destination, sourceUrl);
-    const children = 'children' in node ? node.children : undefined;
-    const replacement = children
-      ? url
-        ? [{ type: 'link' as const, url, title: definition?.title, children }]
-        : children
-      : url
-        ? [
-            {
-              type: 'image' as const,
-              url,
-              title: definition?.title,
-              alt: 'alt' in node ? node.alt : '',
-            },
-          ]
-        : [{ type: 'text' as const, value: 'alt' in node ? (node.alt ?? '') : '' }];
-
-    if (!url && destination) {
-      const hasProtocol = /^[a-z][a-z\d+.-]*:/i.test(destination.trim());
-      const code = hasProtocol ? 'unsupported-url' : 'relative-url';
-      diagnostics.set(code, {
-        code,
-        severity: 'warning',
-        message: hasProtocol
-          ? 'An unsupported link destination was omitted.'
-          : 'A relative link needs an original page URL.',
-      });
-    }
-    if (replacement.length === 1 && url && 'url' in node) {
-      node.url = url;
-      return;
-    }
-    (parent as Parent).children.splice(index, 1, ...replacement);
-    if (!url) return [SKIP, index];
-    return index + 1;
-  });
+      if (!url && destination) {
+        const hasProtocol = /^[a-z][a-z\d+.-]*:/i.test(destination.trim());
+        const code = hasProtocol ? 'unsupported-url' : 'relative-url';
+        diagnostics.set(code, {
+          code,
+          severity: 'warning',
+          message: hasProtocol
+            ? 'An unsupported link destination was omitted.'
+            : 'A relative link needs an original page URL.',
+        });
+      }
+      if (url && 'url' in node) {
+        node.url = url;
+        return;
+      }
+      const replacement =
+        'children' in node
+          ? url
+            ? [{ type: 'link' as const, url, title: definition.title, children: node.children }]
+            : node.children
+          : url
+            ? [{ type: 'image' as const, url, title: definition.title, alt: node.alt }]
+            : [{ type: 'text' as const, value: node.alt! }];
+      (parent as Parent).children.splice(index!, 1, ...replacement);
+      if (!url) return [SKIP, index!];
+      return index! + 1;
+    },
+  );
 
   visit(tree, 'definition', (_node, index, parent) => {
-    if (index !== undefined && parent) {
-      (parent as Parent).children.splice(index, 1);
-      return [SKIP, index];
-    }
+    (parent as Parent).children.splice(index!, 1);
+    return [SKIP, index!];
   });
   return { tree, diagnostics: [...diagnostics.values()] };
 }

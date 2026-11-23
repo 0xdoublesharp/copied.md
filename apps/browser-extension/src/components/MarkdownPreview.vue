@@ -41,8 +41,10 @@ async function copyToClipboard() {
     )
       window.close();
   } catch {
-    status.value = 'Clipboard access failed. Try copying again.';
-    copyFailed.value = true;
+    if (result === ui.conversionResult) {
+      status.value = 'Clipboard access failed. Try copying again.';
+      copyFailed.value = true;
+    }
   } finally {
     pending.value = false;
   }

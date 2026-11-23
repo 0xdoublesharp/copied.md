@@ -3,7 +3,7 @@ import { visit } from 'unist-util-visit';
 import { footnoteNumbers, htmlText } from './document';
 import { toBold, toBoldItalic, toItalic } from './unicode';
 
-type Style = { bold?: boolean; italic?: boolean; strike?: boolean };
+type Style = { bold?: boolean; italic?: boolean; strike?: boolean; insideLink?: boolean };
 interface TextOptions {
   slackApi?: boolean;
   decorativeUnicode?: boolean;
@@ -101,9 +101,11 @@ export function renderText(tree: Root, options: TextOptions = {}): string {
               ? '`' + escape(node.value) + '`'
               : escape(node.value);
           case 'link':
-            return link(inline(node.children, style), node.url);
-          case 'image':
-            return link(escape(node.alt || 'Image'), node.url);
+            return link(inline(node.children, { ...style, insideLink: true }), node.url);
+          case 'image': {
+            const label = escape(node.alt || 'Image');
+            return style.insideLink ? label : link(label, node.url);
+          }
           case 'footnoteReference':
             return '[' + notes.get(node.identifier) + ']';
           case 'html':
@@ -152,12 +154,14 @@ export function renderText(tree: Root, options: TextOptions = {}): string {
           .map((item, index) => {
             const marker = node.ordered ? (node.start ?? 1) + index + '. ' : '• ';
             const task = item.checked == null ? '' : item.checked ? '[x] ' : '[ ] ';
-            const lines = blocks(item.children, item.spread ? '\n\n' : '\n').split('\n');
+            const [first, ...lines] = blocks(item.children, item.spread ? '\n\n' : '\n').split(
+              '\n',
+            );
             const indent = (html ? '&nbsp;' : ' ').repeat(marker.length);
             return (
               escape(marker) +
               task +
-              (lines.shift() ?? '') +
+              first +
               lines
                 .map(
                   (line) =>

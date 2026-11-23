@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { setActivePinia, createPinia } from 'pinia';
 import { useUiStore } from '@/stores/ui.store';
 import { Platform } from '@0xdoublesharp/copied-md-converters';
@@ -92,5 +92,26 @@ describe('useUiStore', () => {
     const store = useUiStore();
     store.markCopied();
     expect(store.copied).toBe(true);
+  });
+
+  it('clears expired copy feedback and rejects unknown formats', () => {
+    vi.useFakeTimers();
+    try {
+      const store = useUiStore();
+      store.markCopied();
+      vi.advanceTimersByTime(1999);
+      expect(store.copied).toBe(true);
+      store.markCopied();
+      vi.advanceTimersByTime(1999);
+      expect(store.copied).toBe(true);
+      vi.advanceTimersByTime(1);
+      expect(store.copied).toBe(false);
+      store.selectPlatform('obsolete');
+      expect(store.selectedPlatform).toBeNull();
+      expect(store.previewText).toBe('');
+      expect(store.hasHtml).toBe(false);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

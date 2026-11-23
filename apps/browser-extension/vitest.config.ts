@@ -1,7 +1,9 @@
 import { defineConfig } from 'vitest/config';
+import vue from '@vitejs/plugin-vue';
 import path from 'path';
 
 export default defineConfig({
+  plugins: [vue()],
   resolve: {
     alias: {
       '@': path.resolve(import.meta.dirname, './src'),
@@ -14,7 +16,8 @@ export default defineConfig({
     coverage: {
       provider: 'v8',
       include: ['src/**/*.ts', 'src/**/*.vue'],
-      exclude: ['src/**/__tests__/**', 'src/components/ui/**'],
+      exclude: ['src/**/__tests__/**'],
+      thresholds: { 100: true, perFile: true },
     },
   },
 });

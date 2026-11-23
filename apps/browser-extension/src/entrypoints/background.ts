@@ -71,7 +71,7 @@ function copySelection(target: CopyTarget, tabId?: number, frameId = 0, fallback
       await browser.storage.local
         .set({ [STORAGE_KEYS.LAST_TARGET]: target })
         .catch(() => undefined);
-      const label = targets.find((format) => format.id === target)?.label ?? target;
+      const label = targets.find((format) => format.id === target)!.label;
       const warning = result.diagnostics.find((diagnostic) => diagnostic.severity === 'warning');
       const message = outcome.fallback ? 'Copied as plain text.' : 'Copied as ' + label + '.';
       const attention = outcome.fallback || !!warning;

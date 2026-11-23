@@ -6,7 +6,7 @@ struct Shortcut: Codable, Equatable {
     let modifiers: UInt32
     let keyLabel: String
 
-    static func defaultShortcut() -> Self {
+    static func defaultShortcut(translating keyCodeForM: () -> UInt32? = keyCodeForM) -> Self {
         Self(keyCode: keyCodeForM() ?? UInt32(kVK_ANSI_M), modifiers: UInt32(controlKey | optionKey | cmdKey), keyLabel: "M")
     }
 
@@ -16,7 +16,7 @@ struct Shortcut: Codable, Equatable {
         let layoutData = Unmanaged<CFData>.fromOpaque(property).takeUnretainedValue()
         guard let bytes = CFDataGetBytePtr(layoutData) else { return nil }
         let layout = UnsafeRawPointer(bytes).assumingMemoryBound(to: UCKeyboardLayout.self)
-        for key in UInt16(0)..<128 {
+        return findM { key in
             var deadKeyState: UInt32 = 0
             var length = 0
             var characters = [UniChar](repeating: 0, count: 4)
@@ -24,11 +24,12 @@ struct Shortcut: Codable, Equatable {
                 layout, key, UInt16(kUCKeyActionDisplay), 0, UInt32(LMGetKbdType()),
                 OptionBits(kUCKeyTranslateNoDeadKeysMask), &deadKeyState, characters.count, &length, &characters
             )
-            if status == noErr && String(decoding: characters.prefix(length), as: UTF16.self).lowercased() == "m" {
-                return UInt32(key)
-            }
+            return status == noErr ? String(decoding: characters.prefix(length), as: UTF16.self) : nil
         }
-        return nil
+    }
+
+    static func findM(translating keyLabel: (UInt16) -> String?) -> UInt32? {
+        (UInt16(0)..<128).first { keyLabel($0)?.lowercased() == "m" }.map(UInt32.init)
     }
 
     static func record(_ event: NSEvent) -> Self? {
@@ -59,6 +60,21 @@ struct Shortcut: Codable, Equatable {
 
 @MainActor
 final class GlobalHotKey {
+    private nonisolated static let signature: OSType = 0x434D4443
+    static let handleEvent: EventHandlerUPP = { _, event, owner in
+        guard let event, let owner else { return OSStatus(eventNotHandledErr) }
+        var key = EventHotKeyID()
+        let result = GetEventParameter(
+            event, EventParamName(kEventParamDirectObject), EventParamType(typeEventHotKeyID),
+            nil, MemoryLayout<EventHotKeyID>.size, nil, &key
+        )
+        guard result == noErr, key.signature == GlobalHotKey.signature else { return OSStatus(eventNotHandledErr) }
+        let receiver = Unmanaged<GlobalHotKey>.fromOpaque(owner).takeUnretainedValue()
+        let identifier = key.id
+        DispatchQueue.main.async { receiver.pressed(identifier) }
+        return noErr
+    }
+
     private var eventHandler: EventHandlerRef?
     private var registration: EventHotKeyRef?
     private var identifier: UInt32 = 0
@@ -68,20 +84,7 @@ final class GlobalHotKey {
     init() throws {
         var event = EventTypeSpec(eventClass: OSType(kEventClassKeyboard), eventKind: UInt32(kEventHotKeyPressed))
         let status = InstallEventHandler(
-            GetApplicationEventTarget(),
-            { _, event, owner in
-                guard let event, let owner else { return OSStatus(eventNotHandledErr) }
-                var key = EventHotKeyID()
-                let result = GetEventParameter(
-                    event, EventParamName(kEventParamDirectObject), EventParamType(typeEventHotKeyID),
-                    nil, MemoryLayout<EventHotKeyID>.size, nil, &key
-                )
-                guard result == noErr, key.signature == 0x434D4443 else { return OSStatus(eventNotHandledErr) }
-                let receiver = Unmanaged<GlobalHotKey>.fromOpaque(owner).takeUnretainedValue()
-                let identifier = key.id
-                DispatchQueue.main.async { receiver.pressed(identifier) }
-                return noErr
-            },
+            GetApplicationEventTarget(), Self.handleEvent,
             1, &event, Unmanaged.passUnretained(self).toOpaque(), &eventHandler
         )
         guard status == noErr else { throw Failure("macOS could not start the keyboard shortcut (\(status)).") }
@@ -92,17 +95,19 @@ final class GlobalHotKey {
         let nextID = identifier &+ 1
         var replacement: EventHotKeyRef?
         let status = RegisterEventHotKey(
-            shortcut.keyCode, shortcut.modifiers, EventHotKeyID(signature: 0x434D4443, id: nextID),
+            shortcut.keyCode, shortcut.modifiers, EventHotKeyID(signature: Self.signature, id: nextID),
             GetApplicationEventTarget(), OptionBits(kEventHotKeyExclusive), &replacement
         )
-        guard status == noErr, let replacement else {
-            if status == eventHotKeyExistsErr { throw Failure("\(shortcut.label) is already in use.") }
-            throw Failure("macOS could not register \(shortcut.label) (\(status)).")
-        }
+        try Self.checkRegistration(status, receivedHandle: replacement != nil, shortcut: shortcut)
         unbind()
         identifier = nextID
         registration = replacement
         current = shortcut
+    }
+
+    static func checkRegistration(_ status: OSStatus, receivedHandle: Bool, shortcut: Shortcut) throws {
+        if status == eventHotKeyExistsErr { throw Failure("\(shortcut.label) is already in use.") }
+        if status != noErr || !receivedHandle { throw Failure("macOS could not register \(shortcut.label) (\(status)).") }
     }
 
     func unbind() {

@@ -55,7 +55,7 @@ For rich clipboard output in a local macOS VS Code window, build the pasteboard 
 
 ## CLI and MCP
 
-Run `pnpm package:cli` and install the generated tarball with `npm install -g ./0xdoublesharp-copied-md-cli-1.0.0.tgz`.
+Run `pnpm package:cli` and install the generated tarball with `npm install -g ./0xdoublesharp-copied-md-cli-1.0.1.tgz`.
 
 ```sh
 copied-md targets
@@ -84,3 +84,8 @@ For an MCP client, configure the installed CLI as a stdio server. It exposes `li
 ## Development
 
 `pnpm check` runs type checks, lint, formatting, and tests. `pnpm build:all` builds the browser extensions, VS Code extension, and CLI. The shared renderer lives in [packages/converters](packages/converters).
+
+- `pnpm test:coverage` runs the TypeScript and Vue suites and requires 100% line, statement, function, and branch coverage per source file.
+- `pnpm test:fuzz` runs seeded Markdown property tests against all 11 copy targets. Set `COPIED_MD_FUZZ_RUNS=1000` for a longer run. To replay a failure, set `COPIED_MD_FUZZ_SEED` and `COPIED_MD_FUZZ_PATH` to the values in the failure report and select the failing test with `-t`.
+- `pnpm test:macos` requires 100% line coverage in every production Swift file. It exercises AppKit launch and dialogs, isolated pasteboards, stale writes, subprocess conversion, RTF round-trips, and temporary hotkey registration.
+- `TLA2TOOLS_JAR=/path/to/tla2tools.jar pnpm test:formal` checks the macOS clipboard protocol with TLC. The [model notes](formal/clipboard/README.md) explain what it checks and how to reproduce the counterexamples.

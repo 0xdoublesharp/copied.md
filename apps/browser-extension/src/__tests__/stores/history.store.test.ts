@@ -55,6 +55,25 @@ describe('useHistoryStore', () => {
     expect(store.entries[0].platform).toBe(Platform.Slack);
   });
 
+  it('clears stale in-memory history when storage cannot be read', async () => {
+    const store = useHistoryStore();
+    await store.addEntry({
+      platform: Platform.Slack,
+      inputPreview: 'before',
+      outputPreview: 'after',
+      truncated: false,
+    });
+    mockBrowser.storage.local.get.mockRejectedValueOnce(new Error('storage unavailable'));
+    await store.load();
+    expect(store.entries).toEqual([]);
+  });
+
+  it('loads missing history as an empty list', async () => {
+    const store = useHistoryStore();
+    await store.load();
+    expect(store.entries).toEqual([]);
+  });
+
   it('adds entries to the beginning', async () => {
     const store = useHistoryStore();
     await store.addEntry({

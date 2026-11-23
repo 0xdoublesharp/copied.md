@@ -1,6 +1,6 @@
 {
   "name": "@0xdoublesharp/copied-md-cli",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/0xdoublesharp/copied.md.git",
@@ -18,6 +18,9 @@
     "node": "^24.15.0 || >=26.0.0"
   },
   "scripts": {
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
     "build": "node esbuild.mjs",
     "prepack": "pnpm build",
     "typecheck": "tsc --version && tsc --noEmit"
@@ -26,8 +29,11 @@
     "@0xdoublesharp/copied-md-converters": "workspace:*",
     "@modelcontextprotocol/sdk": "^1.32.2",
     "@types/node": "^24.19.2",
+    "@vitest/coverage-v8": "^5.1.1",
     "esbuild": "^0.28.2",
     "typescript": "7.0.2",
+    "vite": "^8.3.8",
+    "vitest": "^5.1.1",
     "zod": "^4.6.7"
   }
 }

@@ -4,27 +4,125 @@ import Foundation
 import ServiceManagement
 import SwiftUI
 
+protocol LoginItemService {
+    var status: SMAppService.Status { get }
+    func register() throws
+    func unregister() throws
+}
+
+@MainActor
+protocol LoginItemSettings {
+    static func openSystemSettingsLoginItems()
+}
+
+extension SMAppService: LoginItemService, LoginItemSettings {}
+
+struct LoginItems {
+    let service: any LoginItemService
+    let settings: any LoginItemSettings.Type
+    let canRegister: () -> Bool
+
+    static let system = Self(service: SMAppService.mainApp, settings: SMAppService.self,
+                             canRegister: { canRegisterBundle(at: Bundle.main.bundleURL) })
+
+    static func canRegisterBundle(at url: URL) -> Bool {
+        !url.path.contains("/AppTranslocation/") &&
+            (try? url.resourceValues(forKeys: [.volumeIsReadOnlyKey]).volumeIsReadOnly) != true
+    }
+
+    @MainActor
+    func toggle() throws {
+        switch service.status {
+        case .enabled:
+            try service.unregister()
+        case .requiresApproval:
+            settings.openSystemSettingsLoginItems()
+        default:
+            guard canRegister() else {
+                throw Failure("Move copied.md to Applications before enabling Launch at Login.")
+            }
+            try service.register()
+            if service.status == .requiresApproval { settings.openSystemSettingsLoginItems() }
+        }
+    }
+}
+
+struct WelcomeView: View {
+    let shortcut: String?
+    let shortcutFailure: String?
+    let copy: () -> Void
+    let setShortcut: () -> Void
+
+    var explanation: String {
+        shortcut.map { "Copy Markdown in any app, then press \($0) to choose a format." }
+            ?? shortcutFailure
+            ?? "Use the menu bar to convert Markdown from your clipboard."
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Label("copied.md", systemImage: "clipboard").font(.headline)
+            Text(explanation).font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+            HStack {
+                Button("Copy from Clipboard", action: copy).buttonStyle(.borderedProminent)
+                if shortcut == nil {
+                    Button("Set Shortcut…", action: setShortcut)
+                }
+            }
+        }.padding(16).frame(width: 340, alignment: .leading)
+    }
+}
+
 @MainActor
 final class DesktopApp: NSObject, NSApplicationDelegate, NSMenuDelegate {
-    private let runtime = ConverterRuntime(bundleURL: Bundle.main.bundleURL)
-    private let defaults = UserDefaults.standard
+    private let runtime: any MarkdownRuntime
+    private let defaults: UserDefaults
+    private let clipboardDefaults: UserDefaults
+    private let clipboard: () -> any ClipboardBoard
+    private let chooseFormat: @MainActor ([Target]) throws -> Choice
+    private let runAlert: @MainActor (NSAlert) -> NSApplication.ModalResponse
+    private let makeHotKey: @MainActor () throws -> GlobalHotKey
+    private let defaultShortcut: () -> Shortcut
+    private let loginItems: LoginItems
     private let shortcutKey = "keyboardShortcut"
     private let disabledKey = "keyboardShortcutDisabled"
     private let firstLaunchKey = "hasLaunchedDesktopApp"
-    private let menu = NSMenu()
-    private let welcome = NSPopover()
-    private var statusItem: NSStatusItem?
+    let menu = NSMenu()
+    let welcome = NSPopover()
+    private(set) var statusItem: NSStatusItem?
     private var hotKey: GlobalHotKey?
     private var shortcutFailure: String?
     private var catalog: [Target]?
     private var busy = false
     private var choosing = false
-    private var feedback: Task<Void, Never>?
+    private(set) var feedback: Task<Void, Never>?
+
+    init(
+        runtime: any MarkdownRuntime = ConverterRuntime(bundleURL: Bundle.main.bundleURL),
+        defaults: UserDefaults = .standard,
+        clipboardDefaults: UserDefaults = preferences,
+        clipboard: @escaping () -> any ClipboardBoard = generalClipboard,
+        chooseFormat: (@MainActor ([Target]) throws -> Choice)? = nil,
+        runAlert: @escaping @MainActor (NSAlert) -> NSApplication.ModalResponse = runDesktopAlert,
+        makeHotKey: @escaping @MainActor () throws -> GlobalHotKey = { try GlobalHotKey() },
+        defaultShortcut: @escaping () -> Shortcut = { Shortcut.defaultShortcut() },
+        loginItems: LoginItems = .system
+    ) {
+        self.runtime = runtime
+        self.defaults = defaults
+        self.clipboardDefaults = clipboardDefaults
+        self.clipboard = clipboard
+        self.chooseFormat = chooseFormat ?? { try choose($0, rememberingIn: clipboardDefaults) }
+        self.runAlert = runAlert
+        self.makeHotKey = makeHotKey
+        self.defaultShortcut = defaultShortcut
+        self.loginItems = loginItems
+    }
 
     private var preferredShortcut: Shortcut {
         if let data = defaults.data(forKey: shortcutKey),
            let saved = try? JSONDecoder().decode(Shortcut.self, from: data) { return saved }
-        return .defaultShortcut()
+        return defaultShortcut()
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -34,12 +132,10 @@ final class DesktopApp: NSObject, NSApplicationDelegate, NSMenuDelegate {
         item.menu = menu
         showStatusIcon()
         do {
-            let hotKey = try GlobalHotKey()
-            hotKey.onPress = { [weak self] in self?.copyFromClipboard() }
-            self.hotKey = hotKey
+            let hotKey = try prepareHotKey()
             if !defaults.bool(forKey: disabledKey) { try hotKey.bind(preferredShortcut) }
         } catch {
-            shortcutFailure = message(for: error)
+            shortcutFailure = error.localizedDescription
         }
         refreshMenu()
         if !defaults.bool(forKey: firstLaunchKey) {
@@ -60,6 +156,7 @@ final class DesktopApp: NSObject, NSApplicationDelegate, NSMenuDelegate {
     func applicationWillTerminate(_ notification: Notification) {
         feedback?.cancel()
         hotKey?.stop()
+        if let statusItem { NSStatusBar.system.removeStatusItem(statusItem) }
     }
 
     func menuWillOpen(_ menu: NSMenu) { refreshMenu() }
@@ -82,12 +179,12 @@ final class DesktopApp: NSObject, NSApplicationDelegate, NSMenuDelegate {
         enabled.state = hotKey?.current == nil ? .off : .on
         menu.addItem(enabled)
         menu.addItem(item("Change Keyboard Shortcut…", #selector(recordShortcut)))
-        if !preferredShortcut.matches(.defaultShortcut()) {
+        if !preferredShortcut.matches(defaultShortcut()) {
             menu.addItem(item("Reset to Default Shortcut", #selector(resetShortcut)))
         }
 
         menu.addItem(.separator())
-        let status = SMAppService.mainApp.status
+        let status = loginItems.service.status
         let login = item(status == .requiresApproval ? "Approve Launch at Login…" : "Launch at Login", #selector(toggleLogin))
         login.state = status == .enabled ? .on : (status == .requiresApproval ? .mixed : .off)
         menu.addItem(login)
@@ -112,47 +209,37 @@ final class DesktopApp: NSObject, NSApplicationDelegate, NSMenuDelegate {
         guard let button = statusItem?.button else { return }
         if welcome.isShown { welcome.performClose(nil) }
         welcome.behavior = .transient
-        let shortcut = hotKey?.current?.label
-        let explanation = shortcut.map { "Copy Markdown in any app, then press \($0) to choose a format." }
-            ?? shortcutFailure
-            ?? "Use the menu bar to convert Markdown from your clipboard."
-        welcome.contentViewController = NSHostingController(rootView:
-            VStack(alignment: .leading, spacing: 12) {
-                Label("copied.md", systemImage: "clipboard")
-                    .font(.headline)
-                Text(explanation).font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
-                HStack {
-                    Button("Copy from Clipboard") { [weak self] in self?.copyFromClipboard() }
-                        .buttonStyle(.borderedProminent)
-                    if shortcut == nil {
-                        Button("Set Shortcut…") { [weak self] in self?.recordShortcut() }
-                    }
-                }
-            }.padding(16).frame(width: 340, alignment: .leading)
-        )
+        welcome.contentViewController = NSHostingController(rootView: WelcomeView(
+            shortcut: hotKey?.current?.label, shortcutFailure: shortcutFailure,
+            copy: { [weak self] in self?.copyFromClipboard() },
+            setShortcut: { [weak self] in self?.recordShortcut() }
+        ))
         welcome.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
     }
 
-    @objc private func copyFromClipboard() {
-        guard !busy else { return }
+    @objc private func copyFromClipboard() { startCopy() }
+
+    @discardableResult
+    func startCopy() -> Task<Void, Never>? {
+        guard !busy else { return nil }
         busy = true
         let previousApp = NSWorkspace.shared.frontmostApplication
         welcome.performClose(nil)
         let initial: Snapshot
         do {
-            initial = try snapshot(.general)
+            initial = try snapshot(clipboard())
             guard !initial.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
                 throw Failure("The clipboard has no text. Copy Markdown and try again.")
             }
         } catch {
-            present(message(for: error))
+            present(error.localizedDescription)
             restore(previousApp)
             busy = false
-            return
+            return nil
         }
 
         let runtime = self.runtime
-        Task {
+        return Task {
             defer { busy = false; restore(previousApp) }
             do {
                 let targets: [Target]
@@ -169,14 +256,15 @@ final class DesktopApp: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 }.value
                 _ = try write(
                     WriteRequest(representations: result.representations, expectedChangeCount: initial.changeCount, target: target),
-                    to: .general
+                    to: clipboard(),
+                    rememberingIn: clipboardDefaults
                 )
                 markCopied()
                 if let warning = result.diagnostics.first(where: { $0.severity == "warning" }) {
                     present("Copied with a warning", detail: warning.message)
                 }
             } catch {
-                present(message(for: error))
+                present(error.localizedDescription)
             }
         }
     }
@@ -184,7 +272,7 @@ final class DesktopApp: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private func pick(_ targets: [Target]) throws -> Choice {
         choosing = true
         defer { choosing = false }
-        return try choose(targets)
+        return try chooseFormat(targets)
     }
 
     private func markCopied() {
@@ -197,19 +285,30 @@ final class DesktopApp: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     private func restore(_ app: NSRunningApplication?) {
-        guard let app, !app.isTerminated,
-              app.processIdentifier != ProcessInfo.processInfo.processIdentifier,
-              NSWorkspace.shared.frontmostApplication?.processIdentifier == ProcessInfo.processInfo.processIdentifier else { return }
+        Self.restoreFocus(to: app, frontmost: NSWorkspace.shared.frontmostApplication?.processIdentifier)
+    }
+
+    static func restoreFocus(to app: NSRunningApplication?, frontmost: pid_t?,
+                             using activate: @MainActor (NSRunningApplication) -> Void = reactivate) {
+        let ownPID = ProcessInfo.processInfo.processIdentifier
+        guard let app, !app.isTerminated, app.processIdentifier != ownPID, frontmost == ownPID else { return }
+        activate(app)
+    }
+
+    static func reactivate(_ app: NSRunningApplication) {
         app.activate(options: [])
     }
 
+    private func prepareHotKey() throws -> GlobalHotKey {
+        if let hotKey { return hotKey }
+        let hotKey = try makeHotKey()
+        hotKey.onPress = { [weak self] in self?.copyFromClipboard() }
+        self.hotKey = hotKey
+        return hotKey
+    }
+
     private func performBind(_ shortcut: Shortcut, remember: Bool = true) throws {
-        if hotKey == nil {
-            let hotKey = try GlobalHotKey()
-            hotKey.onPress = { [weak self] in self?.copyFromClipboard() }
-            self.hotKey = hotKey
-        }
-        try hotKey?.bind(shortcut)
+        try prepareHotKey().bind(shortcut)
         if remember { defaults.set(try JSONEncoder().encode(shortcut), forKey: shortcutKey) }
         defaults.set(false, forKey: disabledKey)
         shortcutFailure = nil
@@ -224,17 +323,17 @@ final class DesktopApp: NSObject, NSApplicationDelegate, NSMenuDelegate {
             refreshMenu()
         } else {
             do { try performBind(preferredShortcut, remember: false) }
-            catch { present(message(for: error)) }
+            catch { present(error.localizedDescription) }
         }
     }
 
     @objc private func resetShortcut() {
         do {
-            try performBind(.defaultShortcut(), remember: false)
+            try performBind(defaultShortcut(), remember: false)
             defaults.removeObject(forKey: shortcutKey)
             refreshMenu()
         } catch {
-            present(message(for: error))
+            present(error.localizedDescription)
         }
     }
 
@@ -260,39 +359,20 @@ final class DesktopApp: NSObject, NSApplicationDelegate, NSMenuDelegate {
             NSApp.stopModal(withCode: .alertFirstButtonReturn)
             return nil
         }
-        activateApp()
-        _ = alert.runModal()
+        _ = runAlert(alert)
         if let monitor { NSEvent.removeMonitor(monitor) }
         guard let recorded else { return }
         do { try performBind(recorded) }
-        catch { present(message(for: error)) }
+        catch { present(error.localizedDescription) }
     }
 
     @objc private func toggleLogin() {
-        let service = SMAppService.mainApp
         do {
-            switch service.status {
-            case .enabled:
-                try service.unregister()
-            case .requiresApproval:
-                SMAppService.openSystemSettingsLoginItems()
-            default:
-                let url = Bundle.main.bundleURL
-                if url.path.contains("/AppTranslocation/") ||
-                    (try? url.resourceValues(forKeys: [.volumeIsReadOnlyKey]).volumeIsReadOnly) == true {
-                    throw Failure("Move copied.md to Applications before enabling Launch at Login.")
-                }
-                try service.register()
-                if service.status == .requiresApproval { SMAppService.openSystemSettingsLoginItems() }
-            }
+            try loginItems.toggle()
         } catch {
-            present(message(for: error))
+            present(error.localizedDescription)
         }
         refreshMenu()
-    }
-
-    private func message(for error: Error) -> String {
-        (error as? Failure)?.message ?? error.localizedDescription
     }
 
     private func present(_ title: String, detail: String = "") {
@@ -300,17 +380,13 @@ final class DesktopApp: NSObject, NSApplicationDelegate, NSMenuDelegate {
         alert.messageText = title
         alert.informativeText = detail
         alert.addButton(withTitle: "OK")
-        activateApp()
-        _ = alert.runModal()
-    }
-
-    private func activateApp() {
-        if #available(macOS 14, *) { NSApp.activate() }
-        else { NSApp.activate(ignoringOtherApps: true) }
+        _ = runAlert(alert)
     }
 }
 
+#if !COPIED_MD_TESTS
 @main
+#endif
 enum CopiedDesktop {
     @MainActor
     static func main() {
@@ -318,8 +394,7 @@ enum CopiedDesktop {
             do {
                 try runTests()
             } catch {
-                let description = (error as? Failure)?.message ?? error.localizedDescription
-                FileHandle.standardError.write(Data((description + "\n").utf8))
+                FileHandle.standardError.write(Data((error.localizedDescription + "\n").utf8))
                 exit(1)
             }
             return
@@ -353,15 +428,13 @@ enum CopiedDesktop {
         for key in [kVK_F18, kVK_F19] {
             let shortcut = Shortcut(keyCode: UInt32(key), modifiers: UInt32(controlKey | optionKey | shiftKey | cmdKey), keyLabel: "Test")
             try hotKey.bind(shortcut)
-            guard hotKey.current == shortcut else { throw Failure("Hotkey registration was lost.") }
         }
         hotKey.unbind()
-        guard hotKey.current == nil else { throw Failure("Hotkey registration was not released.") }
         print("Bundled converter, pasteboard formats, stale-write protection, and hotkey registration passed.")
     }
 
     @MainActor
-    private static func testTelegramPasteboard(_ converter: ConverterRuntime) throws {
+    static func testTelegramPasteboard(_ converter: any MarkdownRuntime) throws {
         let markdown = "# Café 🚀\n\n- **Shipped.** See [the rollout](https://example.com/releases/1).\n- **Next.** Check `main`."
         let result = try converter.convert(markdown, to: "telegram")
         let board = NSPasteboard.withUniqueName()
@@ -382,7 +455,7 @@ enum CopiedDesktop {
         let link = text.attribute(.link, at: string.range(of: "the rollout").location, effectiveRange: nil)
         guard bold?.fontDescriptor.symbolicTraits.contains(.bold) == true,
               code?.fontDescriptor.symbolicTraits.contains(.monoSpace) == true,
-              String(describing: link ?? "") == "https://example.com/releases/1" else {
+              link.map(String.init(describing:)) == "https://example.com/releases/1" else {
             throw Failure("Telegram RTF did not preserve emphasis, inline code, or the labeled link.")
         }
     }

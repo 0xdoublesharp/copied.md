@@ -1,9 +1,19 @@
 import AppKit
 import Foundation
 
-struct Failure: Error {
+protocol ClipboardBoard {
+    var changeCount: Int { get }
+    func string(forType type: NSPasteboard.PasteboardType) -> String?
+    @discardableResult func clearContents() -> Int
+    func writeObjects(_ objects: [any NSPasteboardWriting]) -> Bool
+}
+
+extension NSPasteboard: ClipboardBoard {}
+
+struct Failure: LocalizedError {
     let message: String
     let exitCode: Int32
+    var errorDescription: String? { message }
     init(_ message: String, exitCode: Int32 = 1) {
         self.message = message
         self.exitCode = exitCode
@@ -35,18 +45,18 @@ struct Choice: Encodable {
 }
 
 let preferenceKey = "copied-md.lastTarget"
-let preferences = UserDefaults(suiteName: "md.copied.clipboard") ?? .standard
+let preferences = clipboardPreferences(UserDefaults(suiteName: "md.copied.clipboard"))
+
+func clipboardPreferences(_ suite: UserDefaults?) -> UserDefaults { suite ?? .standard }
+
+func generalClipboard() -> any ClipboardBoard { NSPasteboard.general }
 
 func respond<T: Encodable>(_ value: T) throws {
     let data = try JSONEncoder().encode(value)
     FileHandle.standardOutput.write(data + Data([10]))
 }
 
-func request<T: Decodable>(_ type: T.Type) throws -> T {
-    try JSONDecoder().decode(type, from: FileHandle.standardInput.readDataToEndOfFile())
-}
-
-func snapshot(_ pasteboard: NSPasteboard) throws -> Snapshot {
+func snapshot(_ pasteboard: any ClipboardBoard) throws -> Snapshot {
     let changeCount = pasteboard.changeCount
     guard let text = pasteboard.string(forType: .string) else {
         throw Failure("The clipboard has no text.")
@@ -57,8 +67,11 @@ func snapshot(_ pasteboard: NSPasteboard) throws -> Snapshot {
     return Snapshot(text: text, changeCount: changeCount)
 }
 
-func write(_ request: WriteRequest, to pasteboard: NSPasteboard) throws -> Written {
-    let item = NSPasteboardItem()
+func write(
+    _ request: WriteRequest, to pasteboard: any ClipboardBoard, rememberingIn defaults: UserDefaults = preferences,
+    makeItem: () -> NSPasteboardItem = NSPasteboardItem.init
+) throws -> Written {
+    let item = makeItem()
     guard let plain = request.representations["text/plain"],
           !plain.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
           item.setString(plain, forType: .string) else {
@@ -82,22 +95,49 @@ func write(_ request: WriteRequest, to pasteboard: NSPasteboard) throws -> Writt
     if let expected = request.expectedChangeCount, expected != pasteboard.changeCount {
         throw Failure("The clipboard changed. Copy the Markdown again.", exitCode: 3)
     }
-    pasteboard.clearContents()
+    let prepared = pasteboard.clearContents()
+    guard prepared == pasteboard.changeCount else {
+        throw Failure("The clipboard changed. Copy the Markdown again.", exitCode: 3)
+    }
     guard pasteboard.writeObjects([item]) else {
         throw Failure("macOS rejected the clipboard write.")
     }
-    if let target = request.target { preferences.set(target, forKey: preferenceKey) }
+    if let target = request.target { defaults.set(target, forKey: preferenceKey) }
     return Written(types: types)
 }
 
 @MainActor
-func choose(_ targets: [Target]) throws -> Choice {
-    guard !targets.isEmpty else { throw Failure("There are no available formats.") }
+func runDesktopAlert(_ alert: NSAlert) -> NSApplication.ModalResponse {
+    activateForAlert(NSApplication.shared, cooperative: true)
+    return alert.runModal()
+}
+
+@MainActor
+private func runPickerAlert(_ alert: NSAlert) -> NSApplication.ModalResponse {
     let app = NSApplication.shared
     app.setActivationPolicy(.accessory)
+    activateForAlert(app, cooperative: false)
+    return alert.runModal()
+}
+
+@MainActor
+private func activateForAlert(_ app: NSApplication, cooperative: Bool) {
+    if cooperative, #available(macOS 14, *) {
+        app.activate()
+    } else {
+        app.activate(ignoringOtherApps: true)
+    }
+}
+
+@MainActor
+func choose(
+    _ targets: [Target], rememberingIn defaults: UserDefaults = preferences,
+    runModal: @MainActor (NSAlert) -> NSApplication.ModalResponse = runPickerAlert
+) throws -> Choice {
+    guard !targets.isEmpty else { throw Failure("There are no available formats.") }
     let popup = NSPopUpButton(frame: NSRect(x: 0, y: 0, width: 260, height: 28))
     popup.addItems(withTitles: targets.map(\.label))
-    if let recent = preferences.string(forKey: preferenceKey),
+    if let recent = defaults.string(forKey: preferenceKey),
        let index = targets.firstIndex(where: { $0.id == recent }) {
         popup.selectItem(at: index)
     }
@@ -106,8 +146,7 @@ func choose(_ targets: [Target]) throws -> Choice {
     alert.accessoryView = popup
     alert.addButton(withTitle: "Copy")
     alert.addButton(withTitle: "Cancel")
-    app.activate(ignoringOtherApps: true)
-    let confirmed = alert.runModal() == .alertFirstButtonReturn
+    let confirmed = runModal(alert) == .alertFirstButtonReturn
     let index = popup.indexOfSelectedItem
     return Choice(target: confirmed && targets.indices.contains(index) ? targets[index].id : nil)
 }
@@ -115,6 +154,10 @@ func choose(_ targets: [Target]) throws -> Choice {
 func selfTest() throws {
     let board = NSPasteboard.withUniqueName()
     defer { board.releaseGlobally() }
+    try checkPasteboard(board)
+}
+
+func checkPasteboard(_ board: any ClipboardBoard) throws {
     let first = WriteRequest(
         representations: ["text/plain": "# Example", "text/html": "<h1>Example</h1>"],
         expectedChangeCount: board.changeCount,

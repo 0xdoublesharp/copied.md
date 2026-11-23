@@ -1,4 +1,5 @@
 import Foundation
+import Darwin
 
 struct ConversionDiagnostic: Decodable {
     let severity: String
@@ -12,7 +13,12 @@ struct DesktopConversion: Decodable {
     let diagnostics: [ConversionDiagnostic]
 }
 
-struct ConverterRuntime: Sendable {
+protocol MarkdownRuntime: Sendable {
+    func targets() throws -> [Target]
+    func convert(_ text: String, to target: String) throws -> DesktopConversion
+}
+
+struct ConverterRuntime: MarkdownRuntime {
     let bundleURL: URL
 
     func targets() throws -> [Target] {
@@ -40,6 +46,8 @@ struct ConverterRuntime: Sendable {
         let incoming = Pipe()
         process.standardOutput = output
         process.standardInput = incoming
+        // A converter that exits before reading stdin must not terminate the parent.
+        _ = fcntl(incoming.fileHandleForWriting.fileDescriptor, F_SETNOSIGPIPE, 1)
 
         do {
             try process.run()

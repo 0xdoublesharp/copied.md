@@ -69,16 +69,17 @@ async function copy(target?: CopyTarget): Promise<void> {
       return;
     }
     const rich = !!formats['text/html'];
-    const richCopied = rich && (await writeRich(formats));
-    if (!richCopied) await vscode.env.clipboard.writeText(formats['text/plain']);
-    const label = targets.find((item) => item.id === target)?.label ?? target;
+    const label = targets.find((item) => item.id === target)!.label;
     const warning = result.diagnostics.find((item) => item.severity === 'warning');
-    if (rich && !richCopied) {
-      void vscode.window.showInformationMessage(
-        'Copied as plain text. Use the macOS Copy as… action for rich text.',
-      );
-    } else {
+    if (rich && (await writeRich(formats))) {
       void vscode.window.showInformationMessage(`Copied as ${label}.`);
+    } else {
+      await vscode.env.clipboard.writeText(formats['text/plain']);
+      void vscode.window.showInformationMessage(
+        rich
+          ? 'Copied as plain text. Use the macOS Copy as… action for rich text.'
+          : `Copied as ${label}.`,
+      );
     }
     if (warning) void vscode.window.showWarningMessage(warning.message);
   } catch (error) {

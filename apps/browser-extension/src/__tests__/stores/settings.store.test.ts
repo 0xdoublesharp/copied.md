@@ -71,4 +71,12 @@ describe('useSettingsStore', () => {
     // Should keep defaults
     expect(store.defaultPlatform).toBe('rich-text');
   });
+
+  it('keeps the current format when persisted settings are unknown', async () => {
+    const store = useSettingsStore();
+    store.defaultPlatform = 'telegram';
+    mockStorage['copied-md-settings'] = { defaultPlatform: 'obsolete' };
+    await store.load();
+    expect(store.defaultPlatform).toBe('telegram');
+  });
 });

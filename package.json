@@ -1,6 +1,6 @@
 {
   "name": "@0xdoublesharp/copied-md",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/0xdoublesharp/copied.md.git"
@@ -24,6 +24,9 @@
     "dev:vscode": "pnpm --filter copied-md-vscode watch",
     "package:vscode": "pnpm --filter copied-md-vscode package",
     "test": "pnpm -r test",
+    "test:macos": "sh apps/macos/test.sh",
+    "test:formal": "sh formal/clipboard/check.sh",
+    "test:fuzz": "pnpm --filter @0xdoublesharp/copied-md-converters exec vitest run src/__tests__/invariants.test.ts",
     "test:watch": "pnpm -r --parallel test:watch",
     "test:coverage": "pnpm -r test:coverage",
     "lint": "eslint .",

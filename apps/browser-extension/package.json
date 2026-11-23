@@ -1,6 +1,6 @@
 {
   "name": "@0xdoublesharp/copied-md-extension",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/0xdoublesharp/copied.md.git",
@@ -36,6 +36,7 @@
     "@tailwindcss/vite": "^4.3.5",
     "@types/chrome": "^0.3.7",
     "@types/node": "^24.19.2",
+    "@vitejs/plugin-vue": "^6.0.4",
     "typescript-native": "npm:typescript@7.0.2",
     "@vitest/coverage-v8": "^5.1.1",
     "@wxt-dev/module-vue": "^1.0.0",

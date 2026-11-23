@@ -3,11 +3,15 @@ import { writeToClipboard } from '@/lib/clipboard-service';
 
 const payload = { 'text/plain': 'hello', 'text/html': '<b>hello</b>' };
 
-function offscreen(sendMessage: () => Promise<unknown>) {
+function offscreen(sendMessage: () => Promise<unknown>, contexts: unknown[] = []) {
   const createDocument = vi.fn(async () => undefined);
   vi.stubGlobal('chrome', {
     offscreen: { createDocument },
-    runtime: { getURL: (path: string) => path, getContexts: vi.fn(async () => []), sendMessage },
+    runtime: {
+      getURL: (path: string) => path,
+      getContexts: vi.fn(async () => contexts),
+      sendMessage,
+    },
   });
   return createDocument;
 }
@@ -81,5 +85,29 @@ describe('Clipboard routing', () => {
     finish?.({ error: 'denied' });
     await rejected;
     await expect(second).resolves.toMatchObject({ fallback: false });
+  });
+
+  it('reuses an offscreen document and tries plain text after a rich write error', async () => {
+    const sendMessage = vi
+      .fn()
+      .mockRejectedValueOnce(new Error('rich access denied'))
+      .mockResolvedValueOnce({ types: ['text/plain'] });
+    const createDocument = offscreen(sendMessage, [{}]);
+    await expect(writeToClipboard(payload)).resolves.toEqual({
+      types: ['text/plain'],
+      fallback: true,
+    });
+    expect(createDocument).not.toHaveBeenCalled();
+  });
+
+  it('reports a missing browser clipboard context', async () => {
+    vi.stubGlobal('chrome', undefined);
+    await expect(writeToClipboard({ 'text/plain': 'hello' })).rejects.toThrow(
+      'no available clipboard context',
+    );
+    vi.stubGlobal('chrome', {});
+    await expect(writeToClipboard({ 'text/plain': 'hello' })).rejects.toThrow(
+      'no available clipboard context',
+    );
   });
 });

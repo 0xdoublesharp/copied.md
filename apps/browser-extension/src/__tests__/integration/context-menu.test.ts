@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import { targets } from '@0xdoublesharp/copied-md-converters';
-import { MENU_PARENT_ID } from '@/lib/constants';
+import { MENU_PARENT_ID, STORAGE_KEYS } from '@/lib/constants';
 
 type Click = (
   info: { menuItemId: string; frameId: number; selectionText: string },
@@ -75,6 +75,160 @@ describe('Browser selection copy', () => {
         }),
         { frameId: 7 },
       );
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  async function start(manifest = 3) {
+    vi.resetModules();
+    let click!: Click;
+    let shortcut!: (command: string) => Promise<void>;
+    const status = vi.fn();
+    const send = vi.fn(async (_tab, message): Promise<unknown> => {
+      if (message.type === 'READ_SELECTION') return { text: '**Ready**' };
+      if (message.type === 'WRITE_CLIPBOARD') return { types: ['text/plain'] };
+      return undefined;
+    });
+    const get = vi.fn(async (): Promise<Record<string, unknown>> => ({}));
+    const set = vi.fn(async () => undefined);
+    const query = vi.fn(async () => [{ id: 10 }]);
+    const inject = vi.fn();
+    vi.stubGlobal('defineBackground', (callback: () => void) => callback);
+    vi.stubGlobal('browser', {
+      runtime: {
+        getManifest: () => ({ manifest_version: manifest }),
+        onInstalled: { addListener: vi.fn() },
+      },
+      commands: {
+        onCommand: {
+          addListener: (callback: typeof shortcut) => {
+            shortcut = callback;
+          },
+        },
+      },
+      contextMenus: {
+        onClicked: {
+          addListener: (callback: Click) => {
+            click = callback;
+          },
+        },
+      },
+      tabs: { sendMessage: send, executeScript: inject, query },
+      storage: { local: { get, set } },
+      browserAction: { setBadgeText: vi.fn(), setTitle: status },
+    });
+    const background = (await import('@/entrypoints/background')).default;
+    (background as unknown as () => void)();
+    return { click, shortcut, send, status, get, set, query, inject };
+  }
+
+  it('does not use stale context-menu text for protected selections', async () => {
+    try {
+      const { click, send, status } = await start();
+      send.mockResolvedValueOnce({ text: '', blocked: true });
+      click({ menuItemId: 'unrelated', frameId: 0, selectionText: '' }, { id: 10 });
+      click({ menuItemId: 'copied-md-telegram', frameId: 3, selectionText: 'private' }, { id: 10 });
+      await vi.waitFor(() =>
+        expect(status).toHaveBeenCalledWith({ title: 'copied.md · Select Markdown to copy.' }),
+      );
+      expect(send.mock.calls.filter(([, msg]) => msg.type === 'READ_SELECTION')).toHaveLength(1);
+      expect(send.mock.calls.some(([, msg]) => msg.type === 'WRITE_CLIPBOARD')).toBe(false);
+      send.mockResolvedValueOnce({ text: '[x]: https://example.org' });
+      click({ menuItemId: 'copied-md-plain-text', frameId: 1, selectionText: '' }, { id: 10 });
+      await vi.waitFor(() =>
+        expect(status).toHaveBeenLastCalledWith({ title: 'copied.md · There is no text to copy.' }),
+      );
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('uses the Firefox injection API and recovers from failed frame access', async () => {
+    try {
+      const { click, send, status, inject, set, get } = await start(2);
+      send.mockRejectedValueOnce(new Error('no listener'));
+      inject.mockRejectedValueOnce(new Error('restricted page'));
+      get.mockRejectedValueOnce(new Error('storage unavailable'));
+      set.mockRejectedValueOnce(new Error('storage unavailable'));
+      click(
+        { menuItemId: 'copied-md-plain-text', frameId: 4, selectionText: 'fallback' },
+        { id: 10 },
+      );
+      await vi.waitFor(() =>
+        expect(status).toHaveBeenCalledWith({ title: 'copied.md · Copied as Plain Text.' }),
+      );
+      expect(inject).toHaveBeenCalledWith(10, { file: '/content-scripts/content.js', frameId: 4 });
+      expect(send).toHaveBeenCalledWith(
+        10,
+        expect.objectContaining({ type: 'WRITE_CLIPBOARD', payload: { 'text/plain': 'fallback' } }),
+        { frameId: 4 },
+      );
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('uses saved shortcuts, handles failures and serializes subsequent copy requests', async () => {
+    try {
+      const { shortcut, get, query, send, status, set } = await start();
+      await shortcut('other-command');
+      expect(query).not.toHaveBeenCalled();
+      query.mockRejectedValueOnce(new Error('tabs unavailable'));
+      await shortcut('copy-last-target');
+      expect(status).toHaveBeenLastCalledWith({ title: expect.stringContaining('Copy failed.') });
+      get
+        .mockResolvedValueOnce({ [STORAGE_KEYS.LAST_TARGET]: 'plain-text' })
+        .mockResolvedValueOnce({ [STORAGE_KEYS.SETTINGS]: { showNotifications: false } });
+      await shortcut('copy-last-target');
+      await vi.waitFor(() =>
+        expect(set).toHaveBeenCalledWith({ [STORAGE_KEYS.LAST_TARGET]: 'plain-text' }),
+      );
+      expect(send.mock.calls.some(([, msg]) => msg.type === 'COPY_STATUS')).toBe(false);
+
+      get.mockResolvedValueOnce({ [STORAGE_KEYS.SETTINGS]: { defaultPlatform: 'telegram' } });
+      await shortcut('copy-last-target');
+      await vi.waitFor(() =>
+        expect(status).toHaveBeenLastCalledWith({ title: 'copied.md · Copied as plain text.' }),
+      );
+
+      get.mockResolvedValueOnce({ [STORAGE_KEYS.LAST_TARGET]: 42 });
+      send.mockImplementation(async (_tab, msg) => {
+        if (msg.type === 'READ_SELECTION') return { text: '[Note](./notes)' };
+        if (msg.type === 'WRITE_CLIPBOARD') throw new Error('clipboard unavailable');
+        return undefined;
+      });
+      await shortcut('copy-last-target');
+      await vi.waitFor(() =>
+        expect(status).toHaveBeenLastCalledWith({ title: expect.stringContaining('Copy failed.') }),
+      );
+      send.mockImplementation(async (_tab, msg) => {
+        if (msg.type === 'READ_SELECTION') return { text: '[Note](./notes)' };
+        if (msg.type === 'WRITE_CLIPBOARD') return { types: ['text/plain', 'text/html'] };
+        return undefined;
+      });
+      await shortcut('copy-last-target');
+      await vi.waitFor(() =>
+        expect(status).toHaveBeenLastCalledWith({
+          title: expect.stringContaining('A relative link needs an original page URL.'),
+        }),
+      );
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('reports an empty active window without attempting frame messaging', async () => {
+    try {
+      const { shortcut, query, send, status } = await start();
+      query.mockResolvedValueOnce([]);
+      await shortcut('copy-last-target');
+      await vi.waitFor(() => {
+        expect(status).toHaveBeenLastCalledWith({
+          title: 'copied.md · Select Markdown to copy.',
+        });
+      });
+      expect(send).not.toHaveBeenCalled();
     } finally {
       vi.unstubAllGlobals();
     }

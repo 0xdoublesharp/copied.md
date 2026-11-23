@@ -59,6 +59,14 @@ function helper<T>(command: string, input?: unknown): T {
 
 const wantsJson = process.argv.includes('--json');
 
+async function readStdin(): Promise<string> {
+  const chunks: Buffer[] = [];
+  for await (const chunk of process.stdin) {
+    chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+  }
+  return Buffer.concat(chunks).toString('utf8');
+}
+
 async function main() {
   const { positionals, values } = parseArgs({
     allowPositionals: true,
@@ -120,7 +128,7 @@ async function main() {
     if (!values.file && process.stdin.isTTY)
       throw new CliError('missing-input', 'Pipe Markdown into stdin or pass --file.');
     try {
-      markdown = readFileSync(values.file ?? 0, 'utf8');
+      markdown = values.file === undefined ? await readStdin() : readFileSync(values.file, 'utf8');
     } catch (error) {
       throw new CliError('read-failed', (error as Error).message, 1);
     }

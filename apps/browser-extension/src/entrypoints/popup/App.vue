@@ -12,9 +12,7 @@ const activeTab = ref<'convert' | 'settings'>('convert');
 
 onMounted(async () => {
   await settings.load();
-  if (settings.defaultPlatform) {
-    ui.selectPlatform(settings.defaultPlatform);
-  }
+  ui.selectPlatform(settings.defaultPlatform);
 });
 </script>
 
@@ -67,7 +65,7 @@ onMounted(async () => {
       <MarkdownPreview />
     </div>
 
-    <div v-else-if="activeTab === 'settings'">
+    <div v-else>
       <SettingsPanel />
     </div>
   </div>

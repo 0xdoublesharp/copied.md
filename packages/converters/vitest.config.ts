@@ -14,6 +14,7 @@ export default defineConfig({
       provider: 'v8',
       include: ['src/**/*.ts'],
       exclude: ['src/**/__tests__/**'],
+      thresholds: { 100: true, perFile: true },
     },
   },
 });

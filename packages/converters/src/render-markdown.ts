@@ -15,48 +15,73 @@ const serializer = unified().use(remarkGfm).use(remarkStringify, {
 
 export function renderMarkdown(tree: Root, target: 'reddit' | 'discord'): string {
   const numbers = footnoteNumbers(tree);
-  visit(tree, (node, index, parent) => {
-    if (!parent || index === undefined) return;
-    const siblings = (parent as Parent).children;
-    switch (node.type) {
-      case 'html':
-        siblings[index] = { type: 'text', value: htmlText(node.value) };
-        return [SKIP, index + 1];
-      case 'footnoteReference':
-        siblings[index] = { type: 'text', value: '[' + numbers.get(node.identifier) + ']' };
-        return [SKIP, index + 1];
-      case 'footnoteDefinition': {
-        const number = numbers.get(node.identifier);
-        if (number === undefined) {
-          siblings.splice(index, 1);
-          return [SKIP, index];
-        }
-        const note = renderText({ type: 'root', children: node.children });
-        siblings[index] = {
-          type: 'paragraph',
-          children: [{ type: 'text', value: '[' + number + '] ' + note }],
-        };
-        return [SKIP, index + 1];
-      }
-      case 'heading':
-        if (target === 'discord' && node.depth > 3) node.depth = 3;
-        break;
-      case 'table':
-        if (target === 'discord') {
-          siblings[index] = { type: 'code', value: renderText({ type: 'root', children: [node] }) };
+  visit(
+    tree,
+    [
+      'html',
+      'footnoteReference',
+      'footnoteDefinition',
+      'heading',
+      'table',
+      'link',
+      'image',
+    ] as const,
+    (node, position, parent) => {
+      const index = position!;
+      const siblings = (parent as Parent).children;
+      switch (node.type) {
+        case 'html':
+          siblings[index] = { type: 'text', value: htmlText(node.value) };
           return [SKIP, index + 1];
-        }
-        break;
-      case 'image':
-        if (target === 'discord') {
+        case 'footnoteReference':
+          siblings[index] = { type: 'text', value: '[' + numbers.get(node.identifier) + ']' };
+          return [SKIP, index + 1];
+        case 'footnoteDefinition': {
+          const number = numbers.get(node.identifier);
+          if (number === undefined) {
+            siblings.splice(index, 1);
+            return [SKIP, index];
+          }
+          const note = renderText({ type: 'root', children: node.children });
           siblings[index] = {
-            type: 'link',
-            url: node.url,
-            children: [{ type: 'text', value: node.alt || 'Image' }],
+            type: 'paragraph',
+            children: [{ type: 'text', value: '[' + number + '] ' + note }],
           };
           return [SKIP, index + 1];
         }
-    }
-  });
+        case 'heading':
+          if (target === 'discord' && node.depth > 3) node.depth = 3;
+          break;
+        case 'table':
+          if (target === 'discord') {
+            siblings[index] = {
+              type: 'code',
+              value: renderText({ type: 'root', children: [node] }),
+            };
+            return [SKIP, index + 1];
+          }
+          break;
+        case 'link':
+          if (target === 'discord') {
+            visit(node, 'image', (image, childIndex, owner) => {
+              (owner as Parent).children[childIndex!] = {
+                type: 'text',
+                value: image.alt || 'Image',
+              };
+            });
+          }
+          break;
+        case 'image':
+          if (target === 'discord') {
+            siblings[index] = {
+              type: 'link',
+              url: node.url,
+              children: [{ type: 'text', value: node.alt || 'Image' }],
+            };
+            return [SKIP, index + 1];
+          }
+      }
+    },
+  );
   return serializer.stringify(tree).trimEnd();
 }

@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { getConverter, getAllPlatforms, Platform } from '../index';
+import { BaseConverter } from '../base-converter';
 
 describe('Converter registry', () => {
   it('returns a converter for every platform', () => {
@@ -41,5 +42,24 @@ describe('Converter registry', () => {
         expect(plain).toContain('\n');
       }
     }
+  });
+
+  it('truncates bounded output at a code point boundary after newline normalization', () => {
+    class BoundedConverter extends BaseConverter {
+      readonly platform = Platform.SMS;
+      readonly label = 'Bounded test';
+      readonly maxLength = 3;
+
+      convert(markdown: string) {
+        return this.buildResult({ 'text/plain': markdown }, markdown.length);
+      }
+    }
+    const converter = new BoundedConverter();
+    expect(converter.convert('😀\r\nX🙂')).toEqual({
+      payload: { 'text/plain': '😀\nX' },
+      originalLength: 7,
+      truncated: true,
+    });
+    expect(converter.convert('😀X').truncated).toBe(false);
   });
 });
