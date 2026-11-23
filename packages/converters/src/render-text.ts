@@ -3,23 +3,50 @@ import { visit } from 'unist-util-visit';
 import { footnoteNumbers, htmlText } from './document';
 import { toBold, toBoldItalic, toItalic } from './unicode';
 
-type Style = { bold?: boolean; italic?: boolean };
+type Style = { bold?: boolean; italic?: boolean; strike?: boolean };
 interface TextOptions {
   slackApi?: boolean;
   decorativeUnicode?: boolean;
+  telegram?: 'plain' | 'rtf' | 'html';
+}
+
+function escapeRtf(value: string): string {
+  return value.replace(/[\\{}]|[^\t\n -~]/g, (character) => {
+    if ('\\{}'.includes(character)) return '\\' + character;
+    const codeUnit = character.charCodeAt(0);
+    const signed = codeUnit < 0x8000 ? codeUnit : codeUnit - 0x10000;
+    return '\\u' + signed + '?';
+  });
+}
+
+function telegramHtmlLineBreaks(text: string): string {
+  return text
+    .replace(/\n{2,}(?=<(?:pre|blockquote)>)/g, '\n')
+    .replace(/(<\/(?:pre|blockquote)>)\n{2,}/g, '$1\n')
+    .replaceAll('\n', '<br>');
 }
 
 export function renderText(tree: Root, options: TextOptions = {}): string {
   const notes = footnoteNumbers(tree);
-  const { slackApi, decorativeUnicode } = options;
+  const { slackApi, decorativeUnicode, telegram } = options;
+  const rtf = telegram === 'rtf';
+  const html = telegram === 'html';
 
   function escape(value: string): string {
-    return slackApi
+    if (rtf) return escapeRtf(value);
+    return slackApi || html
       ? value.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;')
       : value;
   }
 
   function styled(value: string, style: Style): string {
+    if (rtf) {
+      const controls =
+        (style.bold ? '\\b' : '') + (style.italic ? '\\i' : '') + (style.strike ? '\\strike' : '');
+      const text = escape(value);
+      return controls ? '{' + controls + ' ' + text + '}' : text;
+    }
+    value = escape(value);
     if (!decorativeUnicode) return value;
     if (style.bold && style.italic) return toBoldItalic(value);
     if (style.bold) return toBold(value);
@@ -28,6 +55,19 @@ export function renderText(tree: Root, options: TextOptions = {}): string {
 
   function link(label: string, url: string): string {
     if (!label || label === url) return escape(url);
+    if (html && !url.startsWith('#')) {
+      const href = escape(url).replaceAll('"', '&quot;');
+      return '<a href="' + href + '">' + label + '</a>';
+    }
+    if (rtf && !url.startsWith('#')) {
+      const destination = new URL(url).href
+        .replaceAll('"', '%22')
+        .replaceAll('\\', '%5C')
+        .replaceAll(' ', '%20');
+      return (
+        '{\\field{\\*\\fldinst HYPERLINK "' + escape(destination) + '"}{\\fldrslt ' + label + '}}'
+      );
+    }
     if (slackApi && !url.startsWith('#'))
       return '<' + escape(url.replaceAll('|', '%7C')) + '|' + label + '>';
     return url.startsWith('#') ? label : label + ' (' + url + ')';
@@ -38,20 +78,25 @@ export function renderText(tree: Root, options: TextOptions = {}): string {
       .map((node) => {
         switch (node.type) {
           case 'text':
-            return escape(styled(node.value, style));
+            return styled(node.value, style);
           case 'strong': {
             const value = inline(node.children, { ...style, bold: true });
+            if (html) return '<strong>' + value + '</strong>';
             return slackApi ? '*' + value + '*' : value;
           }
           case 'emphasis': {
             const value = inline(node.children, { ...style, italic: true });
+            if (html) return '<em>' + value + '</em>';
             return slackApi ? '_' + value + '_' : value;
           }
           case 'delete': {
-            const value = inline(node.children, style);
+            const value = inline(node.children, { ...style, strike: true });
+            if (html) return '<s>' + value + '</s>';
             return slackApi ? '~' + value + '~' : value;
           }
           case 'inlineCode':
+            if (html) return '<code>' + escape(node.value) + '</code>';
+            if (rtf) return '{\\f1 ' + escape(node.value) + '}';
             return slackApi && !node.value.includes('`')
               ? '`' + escape(node.value) + '`'
               : escape(node.value);
@@ -72,27 +117,33 @@ export function renderText(tree: Root, options: TextOptions = {}): string {
       .join('');
   }
 
-  function blocks(nodes: RootContent[], separator = '\n\n'): string {
+  function blocks(nodes: RootContent[], separator = '\n\n', topLevel = false): string {
     return nodes
-      .map(block)
+      .map((node) => block(node, topLevel))
       .filter((value) => value !== '')
       .join(separator);
   }
 
-  function block(node: RootContent): string {
+  function block(node: RootContent, topLevel: boolean): string {
     switch (node.type) {
       case 'paragraph':
         return inline(node.children);
       case 'heading': {
         const value = inline(node.children, { bold: true });
+        if (html) return '<strong>' + value + '</strong>';
         return slackApi ? '*' + value + '*' : value;
       }
-      case 'blockquote':
-        return blocks(node.children)
+      case 'blockquote': {
+        const content = blocks(node.children);
+        if (html) return '<blockquote>' + telegramHtmlLineBreaks(content) + '</blockquote>';
+        return content
           .split('\n')
           .map((line) => (line ? '> ' + line : '>'))
           .join('\n');
+      }
       case 'code':
+        if (html) return '<pre>' + escape(node.value).replaceAll('\n', '&#10;') + '</pre>';
+        if (rtf) return '{\\f1 ' + escape(node.value) + '}';
         return slackApi && !node.value.includes('```')
           ? '```\n' + escape(node.value) + '\n```'
           : escape(node.value);
@@ -102,24 +153,37 @@ export function renderText(tree: Root, options: TextOptions = {}): string {
             const marker = node.ordered ? (node.start ?? 1) + index + '. ' : '• ';
             const task = item.checked == null ? '' : item.checked ? '[x] ' : '[ ] ';
             const lines = blocks(item.children, item.spread ? '\n\n' : '\n').split('\n');
+            const indent = (html ? '&nbsp;' : ' ').repeat(marker.length);
             return (
-              marker +
+              escape(marker) +
               task +
               (lines.shift() ?? '') +
-              lines.map((line) => '\n' + (line ? ' '.repeat(marker.length) + line : '')).join('')
+              lines
+                .map(
+                  (line) =>
+                    '\n' +
+                    (line && !(html && /^<(?:pre|blockquote)>/.test(line)) ? indent : '') +
+                    line,
+                )
+                .join('')
             );
           })
-          .join('\n');
+          .join(telegram && topLevel ? '\n\n' : '\n');
       case 'table': {
         const rows = node.children
           .map((row) =>
-            row.children.map((cell) => inline(cell.children).replaceAll('|', '\\|')).join(' | '),
+            row.children
+              .map((cell) => {
+                const content = inline(cell.children);
+                return rtf || html ? content : content.replaceAll('|', '\\|');
+              })
+              .join(' | '),
           )
           .join('\n');
         return slackApi ? '```\n' + rows + '\n```' : rows;
       }
       case 'thematicBreak':
-        return '———';
+        return escape('———');
       case 'html':
         return escape(htmlText(node.value)).trimEnd();
       default:
@@ -134,10 +198,22 @@ export function renderText(tree: Root, options: TextOptions = {}): string {
       definitions.set(number, '[' + number + '] ' + blocks(node.children));
     }
   });
-  return [
-    blocks(tree.children),
+  const text = [
+    blocks(tree.children, '\n\n', true),
     ...[...definitions].sort(([a], [b]) => a - b).map(([, value]) => value),
   ]
     .filter(Boolean)
     .join('\n\n');
+  if (html) return telegramHtmlLineBreaks(text);
+  if (!rtf) return text;
+  // Telegram treats a tab followed by 0 as an automatic list marker.
+  const rtfText = text
+    .replaceAll('\t0', '    0')
+    .replaceAll('\n', '\\par\n')
+    .replaceAll('\t', '\\tab ');
+  return (
+    '{\\rtf1\\ansi\\deff0{\\fonttbl{\\f0\\fswiss Helvetica;}{\\f1\\fmodern Courier;}}\\uc1\\f0 ' +
+    rtfText +
+    '}'
+  );
 }

@@ -14,6 +14,7 @@ export type Platform = (typeof Platform)[keyof typeof Platform];
 export interface ClipboardPayload {
   'text/plain': string;
   'text/html'?: string;
+  'text/rtf'?: string;
 }
 
 export interface ConversionResult {

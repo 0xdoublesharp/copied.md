@@ -67,10 +67,17 @@ export function convertMarkdown(
         decorativeUnicode:
           options.decorativeUnicode &&
           (target === 'facebook' || target === 'twitter' || target === 'telegram'),
+        telegram: target === 'telegram' ? 'plain' : undefined,
       });
   const representations: ClipboardPayload = { 'text/plain': plain };
+  if (target === 'telegram' && plain) {
+    representations['text/rtf'] = renderText(tree, { telegram: 'rtf' });
+  }
   if (profile.rich || target === 'html-source') {
-    const html = renderRichHtml(tree, options.sourceUrl);
+    const html =
+      target === 'telegram'
+        ? renderText(tree, { telegram: 'html' })
+        : renderRichHtml(tree, options.sourceUrl);
     if (target === 'html-source') representations['text/plain'] = html;
     else representations['text/html'] = html;
     if (hasImages)

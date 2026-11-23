@@ -345,6 +345,7 @@ enum CopiedDesktop {
             throw Failure("The bundled converter did not preserve Markdown or URLs.")
         }
         try selfTest()
+        try testTelegramPasteboard(converter)
         let app = NSApplication.shared
         app.setActivationPolicy(.prohibited)
         let hotKey = try GlobalHotKey()
@@ -357,5 +358,32 @@ enum CopiedDesktop {
         hotKey.unbind()
         guard hotKey.current == nil else { throw Failure("Hotkey registration was not released.") }
         print("Bundled converter, pasteboard formats, stale-write protection, and hotkey registration passed.")
+    }
+
+    @MainActor
+    private static func testTelegramPasteboard(_ converter: ConverterRuntime) throws {
+        let markdown = "# Café 🚀\n\n- **Shipped.** See [the rollout](https://example.com/releases/1).\n- **Next.** Check `main`."
+        let result = try converter.convert(markdown, to: "telegram")
+        let board = NSPasteboard.withUniqueName()
+        defer { board.releaseGlobally() }
+        let written = try write(
+            WriteRequest(representations: result.representations, expectedChangeCount: board.changeCount, target: nil),
+            to: board
+        )
+        guard written.types == ["text/plain", "text/html", "text/rtf"],
+              let rtf = board.data(forType: .rtf),
+              let text = NSAttributedString(rtf: rtf, documentAttributes: nil),
+              text.string == "Café 🚀\n\n• Shipped. See the rollout.\n\n• Next. Check main." else {
+            throw Failure("Telegram RTF did not preserve the message layout.")
+        }
+        let string = text.string as NSString
+        let bold = text.attribute(.font, at: string.range(of: "Shipped.").location, effectiveRange: nil) as? NSFont
+        let code = text.attribute(.font, at: string.range(of: "main").location, effectiveRange: nil) as? NSFont
+        let link = text.attribute(.link, at: string.range(of: "the rollout").location, effectiveRange: nil)
+        guard bold?.fontDescriptor.symbolicTraits.contains(.bold) == true,
+              code?.fontDescriptor.symbolicTraits.contains(.monoSpace) == true,
+              String(describing: link ?? "") == "https://example.com/releases/1" else {
+            throw Failure("Telegram RTF did not preserve emphasis, inline code, or the labeled link.")
+        }
     }
 }

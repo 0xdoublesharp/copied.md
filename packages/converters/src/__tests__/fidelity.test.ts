@@ -32,6 +32,82 @@ describe('Markdown fidelity', () => {
     expect(copy(Platform.Telegram, prose).payload['text/plain']).toBe(prose);
   });
 
+  it('provides Telegram RTF with labeled links and a spaced plain-text fallback', () => {
+    const report = [
+      '# Project update',
+      '',
+      '- **Shipped.** See [the rollout][r].',
+      '- **Next.** Check `main` and the *draft*.',
+      '',
+      '[r]: https://example.com/releases/1',
+    ].join('\n');
+    const { representations } = convertMarkdown(report, 'telegram');
+    expect(representations['text/rtf']).toMatch(/\{\\rtf1/);
+    expect(representations['text/rtf']).toContain('{\\b Shipped.}');
+    expect(representations['text/rtf']).toContain('HYPERLINK "https://example.com/releases/1"');
+    expect(representations['text/rtf']).toContain('{\\fldrslt the rollout}');
+    expect(representations['text/plain']).toBe(
+      'Project update\n\n• Shipped. See the rollout (https://example.com/releases/1).\n\n• Next. Check main and the draft.',
+    );
+  });
+
+  it('keeps Telegram RTF literal text and URL fields separate', () => {
+    const { representations } = convertMarkdown(
+      '**Café ☕** `{x} \\b` [local](javascript:bad) [safe](<https://example.com/café?q="x">)',
+      'telegram',
+    );
+    const rtf = representations['text/rtf'];
+    expect(rtf).toContain('Caf\\u233? \\u9749?');
+    expect(rtf).toContain('\\{x\\} \\\\b');
+    expect(rtf).toContain('HYPERLINK "https://example.com/caf%C3%A9?q=%22x%22"');
+    expect(rtf).not.toContain('javascript:');
+  });
+
+  it('emits visible Telegram HTML bullets, spacing, and bold headings', () => {
+    const markdown = [
+      '# Project update',
+      '',
+      '3. **Shipped.** See [the rollout](https://example.com).',
+      '   - Check `main`.',
+      '4. **Next.** Review the *draft*.',
+    ].join('\n');
+    const html = convertMarkdown(markdown, 'telegram').representations['text/html'];
+    expect(html).toBe(
+      '<strong>Project update</strong><br><br>3. <strong>Shipped.</strong> See <a href="https://example.com">the rollout</a>.' +
+        '<br>&nbsp;&nbsp;&nbsp;• Check <code>main</code>.<br><br>4. <strong>Next.</strong> Review the <em>draft</em>.',
+    );
+  });
+
+  it('keeps code block indentation without allowing HTML injection in Telegram HTML', () => {
+    const markdown = '```\n  <script>\n\t0\n```\n\n[the draft](<https://example.com/?q="x"&y=z>)';
+    const representations = convertMarkdown(markdown, 'telegram').representations;
+    expect(representations['text/html']).toContain('<pre>  &lt;script&gt;&#10;\t0</pre>');
+    expect(representations['text/html']).toContain(
+      'href="https://example.com/?q=&quot;x&quot;&amp;y=z"',
+    );
+    expect(representations['text/rtf']).not.toContain('\\tab 0');
+  });
+
+  it('keeps quotes and code intact next to Telegram HTML lists and paragraphs', () => {
+    const markdown = [
+      'Intro',
+      '',
+      '- Item',
+      '  > First',
+      '  >',
+      '  > Second',
+      '',
+      '  ```',
+      '    code',
+      '  ```',
+      '',
+      'After',
+    ].join('\n');
+    expect(convertMarkdown(markdown, 'telegram').representations['text/html']).toBe(
+      'Intro<br><br>• Item<br><blockquote>First<br><br>Second</blockquote><br><pre>  code</pre><br>After',
+    );
+  });
+
   it('pairs rich HTML with readable text and handles unsafe or remote content', () => {
     const markdown =
       '**Bold** [local](custom:ignored) ![Illustration](https://example.com/image.png)';

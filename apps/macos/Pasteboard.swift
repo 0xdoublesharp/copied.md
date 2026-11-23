@@ -72,6 +72,12 @@ func write(_ request: WriteRequest, to pasteboard: NSPasteboard) throws -> Writt
         }
         types.append("text/html")
     }
+    if let rtf = request.representations["text/rtf"], !rtf.isEmpty {
+        guard item.setData(Data(rtf.utf8), forType: .rtf) else {
+            throw Failure("The copy could not be prepared.")
+        }
+        types.append("text/rtf")
+    }
 
     if let expected = request.expectedChangeCount, expected != pasteboard.changeCount {
         throw Failure("The clipboard changed. Copy the Markdown again.", exitCode: 3)
