@@ -1,7 +1,10 @@
 packages:
   - packages/*
+  - apps/*
 
-ignoredBuiltDependencies:
-  - esbuild
-  - spawn-sync
-  - vue-demi
+strictPeerDependencies: true
+
+allowBuilds:
+  '@vscode/vsce-sign': false
+  core-js: false
+  esbuild: true

@@ -37,13 +37,17 @@ describe('DiscordConverter', () => {
 
   it('converts headings to bold (Discord has no heading support)', () => {
     const result = converter.convert(FIXTURES.heading1);
-    expect(result.payload['text/plain']).toBe('**Main Title**');
+    expect(result.payload['text/plain']).toBe('# Main Title');
   });
 
-  it('includes URL for links', () => {
+  it('uses native markdown link syntax', () => {
     const result = converter.convert(FIXTURES.link);
-    expect(result.payload['text/plain']).toContain('Example');
-    expect(result.payload['text/plain']).toContain('https://example.com');
+    expect(result.payload['text/plain']).toBe('[Example](https://example.com)');
+  });
+
+  it('preserves image alt text with URL', () => {
+    const result = converter.convert(FIXTURES.image);
+    expect(result.payload['text/plain']).toBe('[Alt text](https://example.com/img.png)');
   });
 
   it('preserves blockquotes', () => {
@@ -60,6 +64,12 @@ describe('DiscordConverter', () => {
   it('preserves list structure', () => {
     const result = converter.convert(FIXTURES.unorderedList);
     expect(result.payload['text/plain']).toContain('- Item 1');
+  });
+
+  it('renders task list checkboxes with visual marks', () => {
+    const result = converter.convert(FIXTURES.taskList);
+    expect(result.payload['text/plain']).toContain('- [ ] Todo');
+    expect(result.payload['text/plain']).toContain('- [x] Done');
   });
 
   it('handles nested formatting', () => {

@@ -1,21 +1,28 @@
 {
-  "name": "copied-md",
+  "name": "@0xdoublesharp/copied-md",
   "version": "1.0.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/0xdoublesharp/copied.md.git"
+  },
   "private": true,
   "type": "module",
-  "packageManager": "pnpm@10.25.0",
+  "packageManager": "pnpm@12.21.0",
   "engines": {
-    "node": ">=22.0.0"
+    "node": "^24.15.0 || >=26.0.0"
   },
   "scripts": {
-    "dev": "pnpm --filter @copied-md/extension dev",
-    "dev:firefox": "pnpm --filter @copied-md/extension dev:firefox",
-    "build": "pnpm --filter @copied-md/extension build",
-    "build:firefox": "pnpm --filter @copied-md/extension build:firefox",
-    "build:edge": "pnpm --filter @copied-md/extension build:edge",
-    "build:all": "pnpm build && pnpm build:firefox && pnpm build:edge",
-    "zip": "pnpm --filter @copied-md/extension zip",
-    "zip:firefox": "pnpm --filter @copied-md/extension zip:firefox",
+    "dev": "pnpm --filter @0xdoublesharp/copied-md-extension dev",
+    "dev:firefox": "pnpm --filter @0xdoublesharp/copied-md-extension dev:firefox",
+    "build": "pnpm --filter @0xdoublesharp/copied-md-extension build",
+    "build:firefox": "pnpm --filter @0xdoublesharp/copied-md-extension build:firefox",
+    "build:edge": "pnpm --filter @0xdoublesharp/copied-md-extension build:edge",
+    "build:vscode": "pnpm --filter copied-md-vscode build",
+    "build:all": "pnpm build && pnpm build:firefox && pnpm build:edge && pnpm build:vscode && pnpm build:cli",
+    "zip": "pnpm --filter @0xdoublesharp/copied-md-extension zip",
+    "zip:firefox": "pnpm --filter @0xdoublesharp/copied-md-extension zip:firefox",
+    "dev:vscode": "pnpm --filter copied-md-vscode watch",
+    "package:vscode": "pnpm --filter copied-md-vscode package",
     "test": "pnpm -r test",
     "test:watch": "pnpm -r --parallel test:watch",
     "test:coverage": "pnpm -r test:coverage",
@@ -23,17 +30,23 @@
     "lint:fix": "eslint . --fix",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "typecheck": "pnpm -r typecheck",
+    "typecheck": "tsc --version && pnpm -r typecheck",
     "check": "pnpm typecheck && pnpm lint && pnpm format:check && pnpm test",
-    "clean": "pnpm -r exec rm -rf dist build .wxt coverage"
+    "clean": "pnpm -r exec rm -rf dist build .wxt coverage",
+    "zip:edge": "pnpm --filter @0xdoublesharp/copied-md-extension zip:edge",
+    "build:cli": "pnpm --filter @0xdoublesharp/copied-md-cli build",
+    "build:macos": "sh apps/macos/build.sh",
+    "build:macos-app": "sh apps/macos/build-app.sh",
+    "package:cli": "pnpm --filter @0xdoublesharp/copied-md-cli pack"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
-    "eslint": "^10.0.0",
+    "typescript-native": "npm:typescript@7.0.2",
+    "eslint": "^10.15.0",
     "eslint-config-prettier": "^10.1.8",
-    "eslint-plugin-vue": "^10.8.0",
-    "prettier": "^3.8.1",
-    "typescript": "^5.9.3",
-    "typescript-eslint": "^8.56.0"
+    "eslint-plugin-vue": "^10.12.1",
+    "prettier": "^3.10.1",
+    "typescript": "npm:@typescript/typescript6@6.0.2",
+    "typescript-eslint": "^8.73.0"
   }
 }

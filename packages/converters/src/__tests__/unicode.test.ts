@@ -3,16 +3,16 @@ import { toBold, toItalic, toBoldItalic } from '../unicode';
 
 describe('Unicode text styling', () => {
   describe('toBold', () => {
-    it('converts uppercase letters to mathematical bold', () => {
-      expect(toBold('ABC')).toBe('\u{1D400}\u{1D401}\u{1D402}');
+    it('converts uppercase letters to sans-serif bold', () => {
+      expect(toBold('ABC')).toBe('\u{1D5D4}\u{1D5D5}\u{1D5D6}');
     });
 
-    it('converts lowercase letters to mathematical bold', () => {
-      expect(toBold('abc')).toBe('\u{1D41A}\u{1D41B}\u{1D41C}');
+    it('converts lowercase letters to sans-serif bold', () => {
+      expect(toBold('abc')).toBe('\u{1D5EE}\u{1D5EF}\u{1D5F0}');
     });
 
     it('converts digits to bold digits', () => {
-      expect(toBold('123')).toBe('\u{1D7CF}\u{1D7D0}\u{1D7D1}');
+      expect(toBold('123')).toBe('\u{1D7ED}\u{1D7EE}\u{1D7EF}');
     });
 
     it('preserves non-alphanumeric characters', () => {
@@ -27,16 +27,16 @@ describe('Unicode text styling', () => {
   });
 
   describe('toItalic', () => {
-    it('converts uppercase letters to mathematical italic', () => {
-      expect(toItalic('A')).toBe('\u{1D434}');
+    it('converts uppercase letters to sans-serif italic', () => {
+      expect(toItalic('A')).toBe('\u{1D608}');
     });
 
-    it('converts lowercase letters to mathematical italic', () => {
-      expect(toItalic('a')).toBe('\u{1D44E}');
+    it('converts lowercase letters to sans-serif italic', () => {
+      expect(toItalic('a')).toBe('\u{1D622}');
     });
 
-    it('handles the special case for h (planck constant)', () => {
-      expect(toItalic('h')).toBe('\u210E');
+    it('keeps h as sans-serif italic h', () => {
+      expect(toItalic('h')).toBe('\u{1D629}');
     });
 
     it('preserves non-letter characters', () => {
@@ -50,16 +50,16 @@ describe('Unicode text styling', () => {
   });
 
   describe('toBoldItalic', () => {
-    it('converts uppercase letters to mathematical bold italic', () => {
-      expect(toBoldItalic('A')).toBe('\u{1D468}');
+    it('converts uppercase letters to sans-serif bold italic', () => {
+      expect(toBoldItalic('A')).toBe('\u{1D63C}');
     });
 
-    it('converts lowercase letters to mathematical bold italic', () => {
-      expect(toBoldItalic('a')).toBe('\u{1D482}');
+    it('converts lowercase letters to sans-serif bold italic', () => {
+      expect(toBoldItalic('a')).toBe('\u{1D656}');
     });
 
     it('converts digits to bold digits', () => {
-      expect(toBoldItalic('0')).toBe('\u{1D7CE}');
+      expect(toBoldItalic('0')).toBe('\u{1D7EC}');
     });
 
     it('handles empty string', () => {

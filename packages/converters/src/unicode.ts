@@ -1,5 +1,5 @@
-// Unicode Mathematical character mappings for styled text
-// These characters render as visually bold/italic in plain text contexts
+// Unicode Mathematical Sans-Serif character mappings for styled text.
+// These variants are generally more readable in chat apps than serif math glyphs.
 
 const BOLD_UPPER: Record<string, string> = {};
 const BOLD_LOWER: Record<string, string> = {};
@@ -9,33 +9,30 @@ const BOLD_ITALIC_UPPER: Record<string, string> = {};
 const BOLD_ITALIC_LOWER: Record<string, string> = {};
 const BOLD_DIGITS: Record<string, string> = {};
 
-// Mathematical Bold: U+1D400 (A) to U+1D419 (Z), U+1D41A (a) to U+1D433 (z)
+// Mathematical Sans-Serif Bold:
+// U+1D5D4 (A) to U+1D5ED (Z), U+1D5EE (a) to U+1D607 (z)
 for (let i = 0; i < 26; i++) {
-  BOLD_UPPER[String.fromCharCode(65 + i)] = String.fromCodePoint(0x1d400 + i);
-  BOLD_LOWER[String.fromCharCode(97 + i)] = String.fromCodePoint(0x1d41a + i);
+  BOLD_UPPER[String.fromCharCode(65 + i)] = String.fromCodePoint(0x1d5d4 + i);
+  BOLD_LOWER[String.fromCharCode(97 + i)] = String.fromCodePoint(0x1d5ee + i);
 }
 
-// Mathematical Italic: U+1D434 (A) to U+1D44D (Z), U+1D44E (a) to U+1D467 (z)
-// Note: 'h' (U+1D462) is replaced by the planck constant ℎ (U+210E) in Unicode
+// Mathematical Sans-Serif Italic:
+// U+1D608 (A) to U+1D621 (Z), U+1D622 (a) to U+1D63B (z)
 for (let i = 0; i < 26; i++) {
-  ITALIC_UPPER[String.fromCharCode(65 + i)] = String.fromCodePoint(0x1d434 + i);
-  if (i === 7) {
-    // 'h' special case
-    ITALIC_LOWER[String.fromCharCode(97 + i)] = '\u210E';
-  } else {
-    ITALIC_LOWER[String.fromCharCode(97 + i)] = String.fromCodePoint(0x1d44e + i);
-  }
+  ITALIC_UPPER[String.fromCharCode(65 + i)] = String.fromCodePoint(0x1d608 + i);
+  ITALIC_LOWER[String.fromCharCode(97 + i)] = String.fromCodePoint(0x1d622 + i);
 }
 
-// Mathematical Bold Italic: U+1D468 (A) to U+1D481 (Z), U+1D482 (a) to U+1D49B (z)
+// Mathematical Sans-Serif Bold Italic:
+// U+1D63C (A) to U+1D655 (Z), U+1D656 (a) to U+1D66F (z)
 for (let i = 0; i < 26; i++) {
-  BOLD_ITALIC_UPPER[String.fromCharCode(65 + i)] = String.fromCodePoint(0x1d468 + i);
-  BOLD_ITALIC_LOWER[String.fromCharCode(97 + i)] = String.fromCodePoint(0x1d482 + i);
+  BOLD_ITALIC_UPPER[String.fromCharCode(65 + i)] = String.fromCodePoint(0x1d63c + i);
+  BOLD_ITALIC_LOWER[String.fromCharCode(97 + i)] = String.fromCodePoint(0x1d656 + i);
 }
 
-// Mathematical Bold Digits: U+1D7CE (0) to U+1D7D7 (9)
+// Mathematical Sans-Serif Bold Digits: U+1D7EC (0) to U+1D7F5 (9)
 for (let i = 0; i < 10; i++) {
-  BOLD_DIGITS[String.fromCharCode(48 + i)] = String.fromCodePoint(0x1d7ce + i);
+  BOLD_DIGITS[String.fromCharCode(48 + i)] = String.fromCodePoint(0x1d7ec + i);
 }
 
 function mapChar(

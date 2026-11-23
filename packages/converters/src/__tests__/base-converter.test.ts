@@ -26,4 +26,20 @@ describe('Converter registry', () => {
     expect(platforms).toContain(Platform.Reddit);
     expect(platforms).toContain(Platform.HTML);
   });
+
+  it('honors hard line breaks across converters', () => {
+    const markdown = 'Line one\\\nLine two';
+
+    for (const platform of getAllPlatforms()) {
+      const converter = getConverter(platform);
+      const result = converter.convert(markdown);
+      const plain = result.payload['text/plain'];
+
+      if (platform === Platform.HTML) {
+        expect(plain).toContain('<br>');
+      } else {
+        expect(plain).toContain('\n');
+      }
+    }
+  });
 });

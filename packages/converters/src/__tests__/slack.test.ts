@@ -37,7 +37,7 @@ describe('SlackConverter', () => {
 
   it('converts headings to bold (no heading support in Slack)', () => {
     const result = converter.convert(FIXTURES.heading1);
-    expect(result.payload['text/plain']).toBe('*Main Title*');
+    expect(result.payload['text/plain']).toBe('*◆ Main Title*');
   });
 
   it('converts [text](url) to <url|text>', () => {
@@ -52,7 +52,13 @@ describe('SlackConverter', () => {
 
   it('uses bullet character for unordered lists', () => {
     const result = converter.convert(FIXTURES.unorderedList);
-    expect(result.payload['text/plain']).toContain('\u2022 Item 1');
+    expect(result.payload['text/plain']).toContain('▸ Item 1');
+  });
+
+  it('renders task list checkboxes with visual marks', () => {
+    const result = converter.convert(FIXTURES.taskList);
+    expect(result.payload['text/plain']).toContain('☐ Todo');
+    expect(result.payload['text/plain']).toContain('☑ Done');
   });
 
   it('preserves ordered list numbers', () => {
@@ -78,10 +84,20 @@ describe('SlackConverter', () => {
     expect(result.payload['text/html']).toContain('<a href="https://example.com">Example</a>');
   });
 
+  it('HTML payload renders tables as proper HTML table elements', () => {
+    const result = converter.convert(FIXTURES.table);
+    const html = result.payload['text/html']!;
+    expect(html).toContain('<table>');
+    expect(html).toContain('<tr>');
+    expect(html).toContain('<td>Col A</td>');
+    expect(html).toContain('<td>Col B</td>');
+    expect(html).toContain('</table>');
+  });
+
   it('handles complex markdown', () => {
     const result = converter.convert(FIXTURES.complex);
     const text = result.payload['text/plain'];
-    expect(text).toContain('*Report*'); // heading as bold
+    expect(text).toContain('*◆ Report*'); // heading as bold
     expect(text).toContain('*Summary*'); // bold
     expect(text).toContain('_important_'); // italic
     expect(text).toContain('<https://example.com|Read more>'); // link

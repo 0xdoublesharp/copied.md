@@ -11,6 +11,7 @@ export const FIXTURES = {
   heading2: '## Sub Title',
   heading3: '### Third Level',
   unorderedList: '- Item 1\n- Item 2\n- Item 3',
+  taskList: '- [ ] Todo\n- [x] Done',
   orderedList: '1. First\n2. Second\n3. Third',
   nestedList: '- Parent\n  - Child 1\n  - Child 2',
   blockquote: '> This is a quote',

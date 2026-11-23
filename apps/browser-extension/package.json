@@ -1,0 +1,50 @@
+{
+  "name": "@0xdoublesharp/copied-md-extension",
+  "version": "1.0.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/0xdoublesharp/copied.md.git",
+    "directory": "apps/browser-extension"
+  },
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "wxt",
+    "dev:firefox": "wxt --browser firefox",
+    "build": "wxt build",
+    "build:firefox": "wxt build --browser firefox",
+    "build:edge": "wxt build --browser edge",
+    "zip": "wxt zip",
+    "zip:firefox": "wxt zip --browser firefox",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
+    "typecheck": "wxt prepare && tsc --version && tsc --noEmit -p tsconfig.app.json && tsc --noEmit -p tsconfig.node.json && vue-tsc --noEmit -p tsconfig.app.json",
+    "prepare": "wxt prepare",
+    "zip:edge": "wxt zip --browser edge"
+  },
+  "dependencies": {
+    "@0xdoublesharp/copied-md-converters": "workspace:*",
+    "@vue/devtools-api": "^8.2.1",
+    "character-entities": "^2.0.2",
+    "clsx": "^2.1.1",
+    "pinia": "^4.1.0",
+    "tailwind-merge": "^3.7.1",
+    "vue": "^3.5.46"
+  },
+  "devDependencies": {
+    "@tailwindcss/vite": "^4.3.5",
+    "@types/chrome": "^0.3.7",
+    "@types/node": "^24.19.2",
+    "typescript-native": "npm:typescript@7.0.2",
+    "@vitest/coverage-v8": "^5.1.1",
+    "@wxt-dev/module-vue": "^1.0.0",
+    "jsdom": "^31.0.1",
+    "tailwindcss": "^4.3.5",
+    "typescript": "npm:@typescript/typescript6@6.0.2",
+    "vite": "^8.3.8",
+    "vitest": "^5.1.1",
+    "vue-tsc": "^3.3.14",
+    "wxt": "^0.21.5"
+  }
+}

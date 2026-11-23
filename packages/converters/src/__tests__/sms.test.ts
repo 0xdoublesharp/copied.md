@@ -45,18 +45,29 @@ describe('SmsConverter', () => {
 
   it('converts headings to uppercase', () => {
     const result = converter.convert(FIXTURES.heading1);
-    expect(result.payload['text/plain']).toBe('MAIN TITLE');
+    expect(result.payload['text/plain']).toBe('◆ MAIN TITLE');
   });
 
-  it('extracts link text', () => {
+  it('preserves link text and URL', () => {
     const result = converter.convert(FIXTURES.link);
-    expect(result.payload['text/plain']).toContain('Example');
+    expect(result.payload['text/plain']).toBe('Example (https://example.com)');
+  });
+
+  it('preserves image alt text and URL', () => {
+    const result = converter.convert(FIXTURES.image);
+    expect(result.payload['text/plain']).toBe('Alt text (https://example.com/img.png)');
   });
 
   it('preserves list structure', () => {
     const result = converter.convert(FIXTURES.unorderedList);
-    expect(result.payload['text/plain']).toContain('- Item 1');
-    expect(result.payload['text/plain']).toContain('- Item 2');
+    expect(result.payload['text/plain']).toContain('▸ Item 1');
+    expect(result.payload['text/plain']).toContain('▸ Item 2');
+  });
+
+  it('renders task list checkboxes with visual marks', () => {
+    const result = converter.convert(FIXTURES.taskList);
+    expect(result.payload['text/plain']).toContain('☐ Todo');
+    expect(result.payload['text/plain']).toContain('☑ Done');
   });
 
   it('preserves ordered list structure', () => {

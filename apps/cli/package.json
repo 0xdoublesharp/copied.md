@@ -1,0 +1,33 @@
+{
+  "name": "@0xdoublesharp/copied-md-cli",
+  "version": "1.0.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/0xdoublesharp/copied.md.git",
+    "directory": "apps/cli"
+  },
+  "description": "Convert Markdown for pasting into other apps",
+  "type": "module",
+  "bin": {
+    "copied-md": "./dist/cli.js"
+  },
+  "files": [
+    "dist"
+  ],
+  "engines": {
+    "node": "^24.15.0 || >=26.0.0"
+  },
+  "scripts": {
+    "build": "node esbuild.mjs",
+    "prepack": "pnpm build",
+    "typecheck": "tsc --version && tsc --noEmit"
+  },
+  "devDependencies": {
+    "@0xdoublesharp/copied-md-converters": "workspace:*",
+    "@modelcontextprotocol/sdk": "^1.32.2",
+    "@types/node": "^24.19.2",
+    "esbuild": "^0.28.2",
+    "typescript": "7.0.2",
+    "zod": "^4.6.7"
+  }
+}

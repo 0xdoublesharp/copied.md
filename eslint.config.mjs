@@ -28,6 +28,7 @@ export default [
     files: ['**/*.vue'],
     languageOptions: {
       globals: {
+        window: 'readonly',
         navigator: 'readonly',
         document: 'readonly',
         ClipboardItem: 'readonly',
@@ -40,6 +41,15 @@ export default [
     },
   },
   {
+    files: ['**/*.mjs'],
+    languageOptions: {
+      globals: {
+        process: 'readonly',
+        console: 'readonly',
+      },
+    },
+  },
+  {
     ignores: [
       'build/',
       '**/build/',
@@ -47,7 +57,9 @@ export default [
       'node_modules/',
       '**/node_modules/',
       'dist/',
+      '**/dist/',
       'coverage/',
+      '**/coverage/',
     ],
   },
 ];

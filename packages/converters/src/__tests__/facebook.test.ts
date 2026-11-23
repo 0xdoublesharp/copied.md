@@ -37,7 +37,7 @@ describe('FacebookConverter', () => {
 
   it('converts headings to bold Unicode', () => {
     const result = converter.convert(FIXTURES.heading1);
-    expect(result.payload['text/plain']).toBe(toBold('Main Title'));
+    expect(result.payload['text/plain']).toBe('◆ ' + toBold('Main Title'));
   });
 
   it('includes URL for links', () => {
@@ -49,6 +49,12 @@ describe('FacebookConverter', () => {
   it('uses bullet for unordered lists', () => {
     const result = converter.convert(FIXTURES.unorderedList);
     expect(result.payload['text/plain']).toContain('\u2022 Item 1');
+  });
+
+  it('renders task list checkboxes with visual marks', () => {
+    const result = converter.convert(FIXTURES.taskList);
+    expect(result.payload['text/plain']).toContain('☐ Todo');
+    expect(result.payload['text/plain']).toContain('☑ Done');
   });
 
   it('uses numbers for ordered lists', () => {
@@ -76,6 +82,16 @@ describe('FacebookConverter', () => {
   it('HTML payload has proper link tags', () => {
     const result = converter.convert(FIXTURES.link);
     expect(result.payload['text/html']).toContain('<a href="https://example.com">Example</a>');
+  });
+
+  it('HTML payload renders tables as proper HTML table elements', () => {
+    const result = converter.convert(FIXTURES.table);
+    const html = result.payload['text/html']!;
+    expect(html).toContain('<table>');
+    expect(html).toContain('<tr>');
+    expect(html).toContain('<td>Col A</td>');
+    expect(html).toContain('<td>Col B</td>');
+    expect(html).toContain('</table>');
   });
 
   it('handles nested formatting (bold with italic inside)', () => {

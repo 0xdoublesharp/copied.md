@@ -22,7 +22,7 @@ describe('TwitterConverter', () => {
 
   it('converts headings to bold Unicode', () => {
     const result = converter.convert(FIXTURES.heading1);
-    expect(result.payload['text/plain']).toBe(toBold('Main Title'));
+    expect(result.payload['text/plain']).toBe('◆ ' + toBold('Main Title'));
   });
 
   it('extracts URL from links (no anchor text)', () => {
@@ -42,19 +42,25 @@ describe('TwitterConverter', () => {
 
   it('uses bullet for unordered lists', () => {
     const result = converter.convert(FIXTURES.unorderedList);
-    expect(result.payload['text/plain']).toContain('\u2022 Item 1');
+    expect(result.payload['text/plain']).toContain('▸ Item 1');
   });
 
-  it('truncates at 280 characters', () => {
+  it('renders task list checkboxes with visual marks', () => {
+    const result = converter.convert(FIXTURES.taskList);
+    expect(result.payload['text/plain']).toContain('☐ Todo');
+    expect(result.payload['text/plain']).toContain('☑ Done');
+  });
+
+  it('does not truncate long text', () => {
     const longText = '**' + 'A'.repeat(300) + '**';
     const result = converter.convert(longText);
-    expect(result.payload['text/plain'].length).toBeLessThanOrEqual(280);
-    expect(result.truncated).toBe(true);
+    expect(Array.from(result.payload['text/plain']).length).toBe(300);
+    expect(result.truncated).toBe(false);
   });
 
-  it('does not truncate short text', () => {
-    const result = converter.convert(FIXTURES.bold);
-    expect(result.truncated).toBe(false);
+  it('renders thematic breaks as em dashes', () => {
+    const result = converter.convert(FIXTURES.thematicBreak);
+    expect(result.payload['text/plain']).toBe('———');
   });
 
   it('has no HTML payload', () => {

@@ -5,5 +5,10 @@ build/
 *.log
 .DS_Store
 coverage/
+.vitest/
+*.tsbuildinfo
+*.vsix
+*.zip
+*.tgz
 .env
 .env.*

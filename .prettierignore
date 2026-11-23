@@ -1,0 +1,5 @@
+pnpm-lock.yaml
+**/.wxt/
+**/build/
+**/coverage/
+**/dist/

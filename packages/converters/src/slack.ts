@@ -26,7 +26,7 @@ export class SlackConverter extends BaseConverter {
 
     return this.buildResult(
       {
-        'text/plain': mrkdwn.trim(),
+        'text/plain': mrkdwn,
         'text/html': html,
       },
       markdown.length,
@@ -40,7 +40,9 @@ export class SlackConverter extends BaseConverter {
         const content = this.processInline(
           'children' in node ? (node.children as PhrasingContent[]) : [],
         );
-        return `*${content}*`;
+        const depth = 'depth' in node ? (node.depth as number) : 1;
+        const marker = depth === 1 ? '◆ ' : depth === 2 ? '▸ ' : '• ';
+        return `*${marker}${content}*`;
       }
       case 'paragraph':
         return this.processInline('children' in node ? (node.children as PhrasingContent[]) : []);
@@ -57,7 +59,7 @@ export class SlackConverter extends BaseConverter {
         const ordered = 'ordered' in node ? (node.ordered as boolean) : false;
         return items
           .map((item, i) => {
-            const prefix = ordered ? `${i + 1}. ` : '\u2022 ';
+            const prefix = this.getListPrefix(item, ordered, i);
             const content = 'children' in item ? (item.children as BlockContent[]) : [];
             return prefix + content.map((c) => this.processBlock(c)).join('\n');
           })
@@ -114,6 +116,13 @@ export class SlackConverter extends BaseConverter {
       .join('');
   }
 
+  private getListPrefix(item: Node, ordered: boolean, index: number): string {
+    if (!ordered && 'checked' in item && typeof item.checked === 'boolean') {
+      return item.checked ? '☑ ' : '☐ ';
+    }
+    return ordered ? `${index + 1}. ` : '▸ ';
+  }
+
   // Generate HTML for rich clipboard (Slack accepts rich paste)
   private processBlockHtml(node: BlockContent | Node): string {
     switch (node.type) {
@@ -151,6 +160,26 @@ export class SlackConverter extends BaseConverter {
           })
           .join('');
         return `<${tag}>${itemsHtml}</${tag}>`;
+      }
+      case 'table': {
+        const rows = 'children' in node ? (node.children as Node[]) : [];
+        const rowsHtml = rows
+          .map((row) => {
+            const cells = 'children' in row ? (row.children as Node[]) : [];
+            const cellsHtml = cells
+              .map(
+                (cell) =>
+                  '<td>' +
+                  this.processInlineHtml(
+                    'children' in cell ? (cell.children as PhrasingContent[]) : [],
+                  ) +
+                  '</td>',
+              )
+              .join('');
+            return '<tr>' + cellsHtml + '</tr>';
+          })
+          .join('');
+        return '<table>' + rowsHtml + '</table>';
       }
       case 'thematicBreak':
         return '<hr>';

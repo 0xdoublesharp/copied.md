@@ -57,6 +57,12 @@ describe('RedditConverter', () => {
     expect(result.payload['text/plain']).toContain('- Item 2');
   });
 
+  it('preserves task list markdown structure', () => {
+    const result = converter.convert(FIXTURES.taskList);
+    expect(result.payload['text/plain']).toContain('- [ ] Todo');
+    expect(result.payload['text/plain']).toContain('- [x] Done');
+  });
+
   it('preserves ordered lists', () => {
     const result = converter.convert(FIXTURES.orderedList);
     expect(result.payload['text/plain']).toContain('1. First');

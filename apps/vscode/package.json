@@ -1,0 +1,151 @@
+{
+  "name": "copied-md-vscode",
+  "displayName": "copied.md",
+  "description": "Copy Markdown formatted for any platform",
+  "version": "1.0.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/0xdoublesharp/copied.md.git",
+    "directory": "apps/vscode"
+  },
+  "private": true,
+  "publisher": "0xdoublesharp",
+  "license": "MIT",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [],
+  "main": "./dist/extension.js",
+  "icon": "assets/icon-128.png",
+  "contributes": {
+    "submenus": [
+      {
+        "id": "copied-md.submenu",
+        "label": "Copy Markdown To..."
+      }
+    ],
+    "menus": {
+      "editor/context": [
+        {
+          "command": "copied-md.copyAs",
+          "when": "editorHasSelection || editorLangId == markdown",
+          "group": "9_cutcopypaste@99"
+        },
+        {
+          "submenu": "copied-md.submenu",
+          "when": "editorHasSelection",
+          "group": "9_cutcopypaste@100"
+        }
+      ],
+      "copied-md.submenu": [
+        {
+          "command": "copied-md.copyTo.facebook"
+        },
+        {
+          "command": "copied-md.copyTo.twitter"
+        },
+        {
+          "command": "copied-md.copyTo.slack"
+        },
+        {
+          "command": "copied-md.copyTo.discord"
+        },
+        {
+          "command": "copied-md.copyTo.telegram"
+        },
+        {
+          "command": "copied-md.copyTo.sms"
+        },
+        {
+          "command": "copied-md.copyTo.reddit"
+        },
+        {
+          "command": "copied-md.copyTo.html"
+        }
+      ]
+    },
+    "commands": [
+      {
+        "command": "copied-md.copyAs",
+        "title": "Copy Markdown As…"
+      },
+      {
+        "command": "copied-md.copyTo.facebook",
+        "title": "Facebook",
+        "category": "Copy Markdown To"
+      },
+      {
+        "command": "copied-md.copyTo.twitter",
+        "title": "Twitter/X",
+        "category": "Copy Markdown To"
+      },
+      {
+        "command": "copied-md.copyTo.slack",
+        "title": "Slack",
+        "category": "Copy Markdown To"
+      },
+      {
+        "command": "copied-md.copyTo.discord",
+        "title": "Discord",
+        "category": "Copy Markdown To"
+      },
+      {
+        "command": "copied-md.copyTo.telegram",
+        "title": "Telegram",
+        "category": "Copy Markdown To"
+      },
+      {
+        "command": "copied-md.copyTo.sms",
+        "title": "SMS",
+        "category": "Copy Markdown To"
+      },
+      {
+        "command": "copied-md.copyTo.reddit",
+        "title": "Reddit",
+        "category": "Copy Markdown To"
+      },
+      {
+        "command": "copied-md.copyTo.html",
+        "title": "HTML Source",
+        "category": "Copy Markdown To"
+      }
+    ],
+    "configuration": {
+      "title": "copied.md",
+      "properties": {
+        "copied-md.pasteboardHelper": {
+          "type": "string",
+          "default": "",
+          "scope": "application",
+          "description": "Absolute path to the copied-md macOS pasteboard helper for Rich Text."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "pnpm run build",
+    "build": "node esbuild.mjs --production",
+    "watch": "node esbuild.mjs --watch",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
+    "typecheck": "tsc --version && tsc --noEmit",
+    "package": "vsce package --no-dependencies"
+  },
+  "dependencies": {
+    "@0xdoublesharp/copied-md-converters": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^24.19.2",
+    "@types/vscode": "1.85.0",
+    "@vitest/coverage-v8": "^5.1.1",
+    "@vscode/vsce": "^4.1.1",
+    "esbuild": "^0.28.2",
+    "typescript": "7.0.2",
+    "vite": "^8.3.8",
+    "vitest": "^5.1.1"
+  }
+}

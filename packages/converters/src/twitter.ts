@@ -7,7 +7,6 @@ import { toBold, toItalic, toBoldItalic } from './unicode';
 export class TwitterConverter extends BaseConverter {
   readonly platform = Platform.Twitter;
   readonly label = 'Twitter/X';
-  readonly maxLength = 280;
 
   convert(markdown: string): ConversionResult {
     if (!markdown.trim()) {
@@ -22,17 +21,19 @@ export class TwitterConverter extends BaseConverter {
     }
 
     const text = lines.join('\n\n');
-    return this.buildResult({ 'text/plain': text.trim() }, markdown.length);
+    return this.buildResult({ 'text/plain': text }, markdown.length);
   }
 
   private processBlock(node: BlockContent | Node): string {
     switch (node.type) {
       case 'heading': {
+        const depth = 'depth' in node ? (node.depth as number) : 1;
         const content = this.processInline(
           'children' in node ? (node.children as PhrasingContent[]) : [],
           'bold',
         );
-        return content;
+        const marker = depth === 1 ? '◆ ' : depth === 2 ? '▸ ' : '• ';
+        return marker + content;
       }
       case 'paragraph':
         return this.processInline(
@@ -52,7 +53,7 @@ export class TwitterConverter extends BaseConverter {
         const ordered = 'ordered' in node ? (node.ordered as boolean) : false;
         return items
           .map((item, i) => {
-            const prefix = ordered ? `${i + 1}. ` : '\u2022 ';
+            const prefix = this.getListPrefix(item, ordered, i);
             const content = 'children' in item ? (item.children as BlockContent[]) : [];
             return prefix + content.map((c) => this.processBlock(c)).join('\n');
           })
@@ -61,7 +62,7 @@ export class TwitterConverter extends BaseConverter {
       case 'html':
         return this.stripHtmlTags('value' in node ? (node.value as string) : '');
       case 'thematicBreak':
-        return '';
+        return '———';
       case 'table': {
         const rows = 'children' in node ? (node.children as Node[]) : [];
         return rows
@@ -123,5 +124,12 @@ export class TwitterConverter extends BaseConverter {
         }
       })
       .join('');
+  }
+
+  private getListPrefix(item: Node, ordered: boolean, index: number): string {
+    if (!ordered && 'checked' in item && typeof item.checked === 'boolean') {
+      return item.checked ? '☑ ' : '☐ ';
+    }
+    return ordered ? `${index + 1}. ` : '▸ ';
   }
 }

@@ -1,5 +1,4 @@
-import type { Node } from 'mdast';
-import { toString } from 'mdast-util-to-string';
+import type { Node, BlockContent, PhrasingContent } from 'mdast';
 import { BaseConverter } from './base-converter';
 import { Platform } from './types';
 import type { ConversionResult } from './types';
@@ -17,35 +16,42 @@ export class SmsConverter extends BaseConverter {
     const lines: string[] = [];
 
     for (const node of tree.children) {
-      lines.push(this.processBlock(node));
+      lines.push(this.processBlock(node as BlockContent));
     }
 
     const text = lines.filter((l) => l !== null).join('\n\n');
-    return this.buildResult({ 'text/plain': text.trim() }, markdown.length);
+    return this.buildResult({ 'text/plain': text }, markdown.length);
   }
 
-  private processBlock(node: Node): string {
+  private processBlock(node: BlockContent | Node): string {
     switch (node.type) {
-      case 'heading':
-        return toString(node).toUpperCase();
+      case 'heading': {
+        const depth = 'depth' in node ? (node.depth as number) : 1;
+        const content = this.processInline(
+          'children' in node ? (node.children as PhrasingContent[]) : [],
+        );
+        const marker = depth === 1 ? '◆ ' : depth === 2 ? '▸ ' : '• ';
+        return marker + content.toUpperCase();
+      }
       case 'paragraph':
-        return toString(node);
+        return this.processInline('children' in node ? (node.children as PhrasingContent[]) : []);
       case 'blockquote':
         return (
           '| ' +
           ('children' in node ? (node.children as Node[]) : [])
-            .map((child) => toString(child))
+            .map((child) => this.processBlock(child as BlockContent))
             .join('\n| ')
         );
       case 'code':
-        return toString(node);
+        return 'value' in node ? (node.value as string) : '';
       case 'list': {
         const items = 'children' in node ? (node.children as Node[]) : [];
-        const ordered = 'ordered' in node ? node.ordered : false;
+        const ordered = 'ordered' in node ? Boolean(node.ordered) : false;
         return items
           .map((item, i) => {
-            const prefix = ordered ? `${i + 1}. ` : '- ';
-            return prefix + toString(item);
+            const prefix = this.getListPrefix(item, ordered, i);
+            const content = 'children' in item ? (item.children as BlockContent[]) : [];
+            return prefix + content.map((c) => this.processBlock(c)).join('\n');
           })
           .join('\n');
       }
@@ -58,12 +64,52 @@ export class SmsConverter extends BaseConverter {
         return rows
           .map((row) => {
             const cells = 'children' in row ? (row.children as Node[]) : [];
-            return cells.map((cell) => toString(cell)).join(' | ');
+            return cells
+              .map((cell) =>
+                this.processInline('children' in cell ? (cell.children as PhrasingContent[]) : []),
+              )
+              .join(' | ');
           })
           .join('\n');
       }
       default:
-        return toString(node);
+        return 'value' in node ? (node.value as string) : '';
     }
+  }
+
+  private processInline(nodes: PhrasingContent[]): string {
+    return nodes
+      .map((node) => {
+        switch (node.type) {
+          case 'text':
+            return node.value;
+          case 'strong':
+          case 'emphasis':
+          case 'delete':
+            return this.processInline(node.children);
+          case 'inlineCode':
+            return node.value;
+          case 'link': {
+            const text = this.processInline(node.children);
+            return text && text !== node.url ? `${text} (${node.url})` : node.url;
+          }
+          case 'image':
+            return node.alt ? `${node.alt} (${node.url})` : node.url;
+          case 'html':
+            return this.stripHtmlTags('value' in node ? (node.value as string) : '');
+          case 'break':
+            return '\n';
+          default:
+            return 'value' in node ? (node.value as string) : '';
+        }
+      })
+      .join('');
+  }
+
+  private getListPrefix(item: Node, ordered: boolean, index: number): string {
+    if (!ordered && 'checked' in item && typeof item.checked === 'boolean') {
+      return item.checked ? '☑ ' : '☐ ';
+    }
+    return ordered ? `${index + 1}. ` : '▸ ';
   }
 }
