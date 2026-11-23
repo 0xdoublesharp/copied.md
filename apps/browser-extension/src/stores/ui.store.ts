@@ -1,4 +1,8 @@
-import { convertMarkdown, resolveTarget, type CopyTarget } from '@0xdoublesharp/copied-md-converters';
+import {
+  convertMarkdown,
+  resolveTarget,
+  type CopyTarget,
+} from '@0xdoublesharp/copied-md-converters';
 import { defineStore } from 'pinia';
 import { computed, ref, watch } from 'vue';
 

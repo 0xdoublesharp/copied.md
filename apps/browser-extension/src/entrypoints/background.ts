@@ -1,7 +1,12 @@
 // Keep this first for the service worker's Markdown entity decoder.
 import '@/lib/dom-polyfill';
 
-import { convertMarkdown, resolveTarget, targets, type CopyTarget } from '@0xdoublesharp/copied-md-converters';
+import {
+  convertMarkdown,
+  resolveTarget,
+  targets,
+  type CopyTarget,
+} from '@0xdoublesharp/copied-md-converters';
 import { MENU_PARENT_ID, STORAGE_KEYS } from '@/lib/constants';
 import { writeToClipboard, type SelectionSource } from '@/lib/clipboard-service';
 
