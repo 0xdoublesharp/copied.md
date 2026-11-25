@@ -11,6 +11,7 @@ const props = defineProps<{
 
 const markupTargets = new Set<CopyTarget>([
   'discord',
+  'telegram',
   'reddit',
   'slack-api',
   'html-source',
