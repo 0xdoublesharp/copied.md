@@ -1,6 +1,24 @@
+//! Markdown → destination-specific clipboard conversion for copied.md.
+//!
+//! [`convert_markdown`] parses GitHub Flavored Markdown and renders it for one of
+//! the 15 [`TARGETS`]. Output matches the `ts-oracle-v1` TypeScript engine except
+//! for the documented greenfield improvements in `tests/parity/divergences.toml`.
+
 use serde::{Deserialize, Serialize};
 use std::borrow::Cow;
 use std::fmt;
+
+mod ast;
+mod convert;
+mod document;
+mod html;
+pub mod limits;
+mod render;
+mod url;
+
+pub use render::unicode::{to_bold, to_bold_italic, to_italic};
+pub use render::xlen::weighted_length as x_weighted_length;
+pub use url::safe_url;
 
 /// All supported copy destinations.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
@@ -84,21 +102,96 @@ pub struct CopyTargetDefinition {
 
 /// Canonical ordered catalog of all 15 copy targets.
 pub const TARGETS: &[CopyTargetDefinition] = &[
-    CopyTargetDefinition { id: CopyTarget::RichText, label: Cow::Borrowed("Rich Text"), rich: true, enabled_by_default: None },
-    CopyTargetDefinition { id: CopyTarget::PlainText, label: Cow::Borrowed("Plain Text"), rich: false, enabled_by_default: None },
-    CopyTargetDefinition { id: CopyTarget::HtmlSource, label: Cow::Borrowed("HTML Source"), rich: false, enabled_by_default: None },
-    CopyTargetDefinition { id: CopyTarget::SlackPaste, label: Cow::Borrowed("Slack"), rich: true, enabled_by_default: None },
-    CopyTargetDefinition { id: CopyTarget::Discord, label: Cow::Borrowed("Discord"), rich: false, enabled_by_default: None },
-    CopyTargetDefinition { id: CopyTarget::Telegram, label: Cow::Borrowed("Telegram"), rich: true, enabled_by_default: None },
-    CopyTargetDefinition { id: CopyTarget::Signal, label: Cow::Borrowed("Signal"), rich: true, enabled_by_default: None },
-    CopyTargetDefinition { id: CopyTarget::Reddit, label: Cow::Borrowed("Reddit"), rich: false, enabled_by_default: None },
-    CopyTargetDefinition { id: CopyTarget::Facebook, label: Cow::Borrowed("Facebook"), rich: false, enabled_by_default: None },
-    CopyTargetDefinition { id: CopyTarget::Twitter, label: Cow::Borrowed("X"), rich: false, enabled_by_default: None },
-    CopyTargetDefinition { id: CopyTarget::Sms, label: Cow::Borrowed("SMS"), rich: false, enabled_by_default: None },
-    CopyTargetDefinition { id: CopyTarget::SlackApi, label: Cow::Borrowed("Slack API (mrkdwn)"), rich: false, enabled_by_default: None },
-    CopyTargetDefinition { id: CopyTarget::Teams, label: Cow::Borrowed("Teams"), rich: true, enabled_by_default: Some(false) },
-    CopyTargetDefinition { id: CopyTarget::Word, label: Cow::Borrowed("Word"), rich: true, enabled_by_default: Some(false) },
-    CopyTargetDefinition { id: CopyTarget::Whatsapp, label: Cow::Borrowed("WhatsApp"), rich: false, enabled_by_default: Some(false) },
+    CopyTargetDefinition {
+        id: CopyTarget::RichText,
+        label: Cow::Borrowed("Rich Text"),
+        rich: true,
+        enabled_by_default: None,
+    },
+    CopyTargetDefinition {
+        id: CopyTarget::PlainText,
+        label: Cow::Borrowed("Plain Text"),
+        rich: false,
+        enabled_by_default: None,
+    },
+    CopyTargetDefinition {
+        id: CopyTarget::HtmlSource,
+        label: Cow::Borrowed("HTML Source"),
+        rich: false,
+        enabled_by_default: None,
+    },
+    CopyTargetDefinition {
+        id: CopyTarget::SlackPaste,
+        label: Cow::Borrowed("Slack"),
+        rich: true,
+        enabled_by_default: None,
+    },
+    CopyTargetDefinition {
+        id: CopyTarget::Discord,
+        label: Cow::Borrowed("Discord"),
+        rich: false,
+        enabled_by_default: None,
+    },
+    CopyTargetDefinition {
+        id: CopyTarget::Telegram,
+        label: Cow::Borrowed("Telegram"),
+        rich: true,
+        enabled_by_default: None,
+    },
+    CopyTargetDefinition {
+        id: CopyTarget::Signal,
+        label: Cow::Borrowed("Signal"),
+        rich: true,
+        enabled_by_default: None,
+    },
+    CopyTargetDefinition {
+        id: CopyTarget::Reddit,
+        label: Cow::Borrowed("Reddit"),
+        rich: false,
+        enabled_by_default: None,
+    },
+    CopyTargetDefinition {
+        id: CopyTarget::Facebook,
+        label: Cow::Borrowed("Facebook"),
+        rich: false,
+        enabled_by_default: None,
+    },
+    CopyTargetDefinition {
+        id: CopyTarget::Twitter,
+        label: Cow::Borrowed("X"),
+        rich: false,
+        enabled_by_default: None,
+    },
+    CopyTargetDefinition {
+        id: CopyTarget::Sms,
+        label: Cow::Borrowed("SMS"),
+        rich: false,
+        enabled_by_default: None,
+    },
+    CopyTargetDefinition {
+        id: CopyTarget::SlackApi,
+        label: Cow::Borrowed("Slack API (mrkdwn)"),
+        rich: false,
+        enabled_by_default: None,
+    },
+    CopyTargetDefinition {
+        id: CopyTarget::Teams,
+        label: Cow::Borrowed("Teams"),
+        rich: true,
+        enabled_by_default: Some(false),
+    },
+    CopyTargetDefinition {
+        id: CopyTarget::Word,
+        label: Cow::Borrowed("Word"),
+        rich: true,
+        enabled_by_default: Some(false),
+    },
+    CopyTargetDefinition {
+        id: CopyTarget::Whatsapp,
+        label: Cow::Borrowed("WhatsApp"),
+        rich: false,
+        enabled_by_default: Some(false),
+    },
 ];
 
 /// Resolves a canonical target ID or legacy alias (`html` -> `rich-text`, `slack` -> `slack-paste`).
@@ -142,7 +235,11 @@ pub struct ClipboardPayload {
     pub html: Option<String>,
     #[serde(rename = "text/rtf", default, skip_serializing_if = "Option::is_none")]
     pub rtf: Option<String>,
-    #[serde(rename = "text/signal", default, skip_serializing_if = "Option::is_none")]
+    #[serde(
+        rename = "text/signal",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
     pub signal: Option<String>,
 }
 
@@ -205,34 +302,27 @@ pub struct MarkdownConversion {
 }
 
 /// Converts Markdown into destination-specific clipboard representations.
-///
-/// Stubbed in M1; implemented in M2.
 pub fn convert_markdown(
     markdown: &str,
     target: CopyTarget,
-    _options: &ConversionOptions,
+    options: &ConversionOptions,
 ) -> MarkdownConversion {
-    let plain = markdown.to_owned();
-    MarkdownConversion {
-        schema_version: 1,
-        target,
-        metrics: ConversionMetrics {
-            source_code_units: markdown.encode_utf16().count(),
-            output_length: plain.chars().count(),
-            unit: if target == CopyTarget::Twitter {
-                MetricUnit::XWeightedCharacters
-            } else {
-                MetricUnit::CodePoints
-            },
-            limit: (target == CopyTarget::Twitter).then_some(280),
-        },
-        representations: ClipboardPayload {
-            plain,
-            html: None,
-            rtf: None,
-            signal: None,
-        },
-        diagnostics: Vec::new(),
+    convert::convert(markdown, target, options, true)
+}
+
+/// Compatibility entry points for parity testing.
+#[doc(hidden)]
+pub mod oracle {
+    use super::{ConversionOptions, CopyTarget, MarkdownConversion};
+
+    /// Converts exactly like the frozen `ts-oracle-v1` TypeScript engine, without
+    /// the greenfield destination improvements.
+    pub fn convert_markdown_ts_v1(
+        markdown: &str,
+        target: CopyTarget,
+        options: &ConversionOptions,
+    ) -> MarkdownConversion {
+        super::convert::convert(markdown, target, options, false)
     }
 }
 
@@ -246,6 +336,7 @@ mod tests {
         assert_eq!(resolve_target("html"), Some(CopyTarget::RichText));
         assert_eq!(resolve_target("slack"), Some(CopyTarget::SlackPaste));
         assert_eq!(resolve_target("missing"), None);
+        assert_eq!(CopyTarget::Whatsapp.to_string(), "whatsapp");
         for def in TARGETS {
             assert_eq!(resolve_target(def.id.id()), Some(def.id));
             assert_eq!(def.id.definition(), def);
@@ -259,7 +350,7 @@ mod tests {
         assert_eq!(val["schemaVersion"], 1);
         assert_eq!(val["target"], "rich-text");
         assert_eq!(val["representations"]["text/plain"], "hi");
-        assert!(val["representations"].get("text/html").is_none());
+        assert_eq!(val["representations"]["text/html"], "<p>hi</p>");
         assert_eq!(val["metrics"]["sourceCodeUnits"], 2);
         assert_eq!(val["metrics"]["outputLength"], 2);
         assert_eq!(val["metrics"]["unit"], "code-points");
