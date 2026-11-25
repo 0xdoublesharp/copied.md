@@ -1,31 +1,8 @@
 //! RTF helpers for the Telegram RTF representation.
 
-use std::fmt::Write as _;
-
-/// Escapes text for RTF (`render-text.ts:18`): `\`, `{`, `}` get a backslash and
-/// every UTF-16 code unit outside printable ASCII, tab, and newline becomes a
-/// signed `\uN?` escape.
-///
-/// The coordinator swaps this for `copied_codec::rtf::escape_rtf` on merge.
+/// Escapes text for RTF via the Lean-verified `copied-codec` UTF-16 escaper.
 pub(crate) fn escape_rtf_utf16(s: &str) -> String {
-    let mut out = String::with_capacity(s.len());
-    for ch in s.chars() {
-        match ch {
-            '\\' | '{' | '}' => {
-                out.push('\\');
-                out.push(ch);
-            }
-            '\t' | '\n' | ' '..='~' => out.push(ch),
-            _ => {
-                let mut units = [0u16; 2];
-                for &unit in ch.encode_utf16(&mut units).iter() {
-                    let signed = i32::from(unit) - if unit < 0x8000 { 0 } else { 0x10000 };
-                    let _ = write!(out, "\\u{signed}?");
-                }
-            }
-        }
-    }
-    out
+    copied_codec::rtf::escape_rtf(s)
 }
 
 /// Wraps rendered RTF text in the Telegram document header.
