@@ -96,6 +96,27 @@ fn tables_to_code(nodes: &mut [HNode], improved: bool) {
     }
 }
 
+/// Unwraps links nested inside links. Foreign content (an SVG `<a>`) is not
+/// auto-closed by the HTML parser, so an unclosed raw `<a>` could otherwise
+/// wrap another anchor after sanitization unwraps the `<svg>`.
+fn unnest_links(nodes: &mut Vec<HNode>, inside_link: bool) {
+    let mut index = 0;
+    while index < nodes.len() {
+        if let HNode::Element(element) = &mut nodes[index] {
+            let is_link = element.name == "a";
+            unnest_links(&mut element.children, inside_link || is_link);
+            if inside_link && is_link {
+                let children = std::mem::take(&mut element.children);
+                let count = children.len();
+                nodes.splice(index..=index, children);
+                index += count;
+                continue;
+            }
+        }
+        index += 1;
+    }
+}
+
 /// Replaces task-list checkboxes with visible glyphs (apps strip `<input>` on paste).
 fn checkboxes_to_glyphs(nodes: &mut Vec<HNode>) {
     let mut index = 0;
@@ -172,6 +193,9 @@ fn render_safe(
     }
     let mut clean = sanitize::sanitize(nodes);
     sanitize::repair_clobbered_fragments(&mut clean);
+    if improved {
+        unnest_links(&mut clean, false);
+    }
     match destination {
         Some(Destination::SlackPaste) => tables_to_code(&mut clean, improved),
         Some(destination) => apply_styles(&mut clean, destination, improved),

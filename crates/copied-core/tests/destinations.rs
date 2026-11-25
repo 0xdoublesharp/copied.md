@@ -799,3 +799,11 @@ fn crossing_delimiter_runs_cannot_bypass_the_depth_limit() {
         );
     }
 }
+
+#[test]
+fn nested_links_from_foreign_content_are_unwrapped() {
+    let source = "<A>\n\n<svg><a href=\"https://example.org\">s</a></svg> t";
+    let out = html(source, CopyTarget::RichText);
+    assert_eq!(out.matches("<a").count(), 1, "{out}");
+    assert!(out.contains('s') && out.contains('t'));
+}
