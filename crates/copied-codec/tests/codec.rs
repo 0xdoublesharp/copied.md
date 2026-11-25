@@ -187,8 +187,8 @@ fn cf_html_offsets_use_utf8_bytes() {
     assert_eq!(
         offsets,
         CfHtmlOffsets {
-            start_html: 105,
-            end_html: 173 + 10,
+            start_html: Some(105),
+            end_html: Some(173 + 10),
             start_fragment: 139,
             end_fragment: 149
         }
@@ -197,7 +197,7 @@ fn cf_html_offsets_use_utf8_bytes() {
         &payload[offsets.start_fragment..offsets.end_fragment],
         fragment
     );
-    assert_eq!(offsets.end_html, payload.len());
+    assert_eq!(offsets.end_html, Some(payload.len()));
 }
 
 const BODY: &str = "<html><body>\r\n<!--StartFragment-->x<!--EndFragment-->\r\n</body></html>";
@@ -215,7 +215,7 @@ fn cf_html_parse_accepts_lf_and_extra_keys() {
     let end_html = start_html + BODY.len();
     let payload = head(start_html, end_html, start_fragment, start_fragment + 1) + BODY;
     let offsets = parse_cf_html(&payload).unwrap();
-    assert_eq!(offsets.start_html, start_html);
+    assert_eq!(offsets.start_html, Some(start_html));
     assert_eq!(&payload[offsets.start_fragment..offsets.end_fragment], "x");
 }
 
@@ -233,6 +233,65 @@ fn with_field(payload: &str, key: &str, value: &str) -> String {
 }
 
 #[test]
+fn cf_html_parse_accepts_no_context() {
+    for (newline, sentinel, fragment) in [
+        ("\r\n", "-1", "<p>Café 🚀</p>"),
+        ("\n", "-000000001", "StartHTML: Café 🚀\nFin"),
+    ] {
+        let header = |start: usize, end: usize| {
+            format!(
+                "Version:1.0{newline}StartHTML:{sentinel}{newline}EndHTML:{sentinel}{newline}\
+                 StartFragment:{start:010}{newline}EndFragment:{end:010}{newline}\
+                 SourceURL:https://example.com/{newline}"
+            )
+        };
+        let start_fragment = header(0, 0).len();
+        let end_fragment = start_fragment + fragment.len();
+        let payload = header(start_fragment, end_fragment) + fragment;
+        let offsets = parse_cf_html(&payload).unwrap();
+        assert_eq!(offsets.start_html, None);
+        assert_eq!(offsets.end_html, None);
+        assert_eq!(offsets.start_fragment, start_fragment);
+        assert_eq!(offsets.end_fragment, end_fragment);
+        assert_eq!(
+            &payload[offsets.start_fragment..offsets.end_fragment],
+            fragment
+        );
+    }
+}
+
+#[test]
+fn cf_html_parse_rejects_bad_no_context_offsets() {
+    let header = |start: usize, end: usize| {
+        format!(
+            "Version:1.0\r\nStartHTML:-1\r\nEndHTML:-1\r\n\
+             StartFragment:{start:010}\r\nEndFragment:{end:010}\r\nStartSelection:0\r\nEndSelection:0\r\n"
+        )
+    };
+    let start = header(0, 0).len();
+    let end = start + "é".len();
+    let good = header(start, end) + "é";
+    let bad = [
+        with_field(&good, "StartHTML:", "00"),
+        with_field(&good, "EndHTML:", "99"),
+        with_field(&good, "EndHTML:", "-2"),
+        with_field(&good, "StartFragment:", "-000000001"),
+        header(start, end + 1) + "é",
+        header(end, start) + "é",
+        header(start + 1, end) + "é",
+        header(start, end - 1) + "é",
+        header(start - 3, end) + "é",
+    ];
+    for payload in &bad {
+        assert_eq!(
+            parse_cf_html(payload),
+            Err(CodecError::InvalidCfHtmlHeader),
+            "{payload:?}"
+        );
+    }
+}
+
+#[test]
 fn cf_html_parse_rejects_bad_headers() {
     let good = encode_cf_html("é");
     let bad = [
@@ -245,7 +304,7 @@ fn cf_html_parse_rejects_bad_headers() {
         // Empty value.
         with_field(&good, "StartHTML:", ""),
         // Not a number.
-        with_field(&good, "StartHTML:", "-000000001"),
+        with_field(&good, "StartHTML:", "-abc"),
         // StartFragment before StartHTML.
         with_field(&good, "StartFragment:", "0000000100"),
         // EndHTML past the payload.

@@ -117,8 +117,8 @@ fn cf_html_matches_lean() {
         assert_eq!(payload, text(case, "payload"), "{}", case["name"]);
         assert_eq!(payload.as_bytes(), hex(text(case, "payload_hex")));
         let offsets = parse_cf_html(&payload).unwrap();
-        assert_eq!(offsets.start_html, usize_field(case, "start_html"));
-        assert_eq!(offsets.end_html, usize_field(case, "end_html"));
+        assert_eq!(offsets.start_html, Some(usize_field(case, "start_html")));
+        assert_eq!(offsets.end_html, Some(usize_field(case, "end_html")));
         assert_eq!(offsets.start_fragment, usize_field(case, "start_fragment"));
         assert_eq!(offsets.end_fragment, usize_field(case, "end_fragment"));
         assert_eq!(

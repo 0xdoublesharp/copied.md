@@ -1,8 +1,8 @@
 //! Fuzzes the Windows `CF_HTML` envelope codec.
 //!
 //! Arbitrary payloads must parse or fail without panicking, and accepted offsets must be
-//! ordered, on character boundaries and framed by the fragment markers. Arbitrary
-//! fragments must round-trip through `encode_cf_html` and `parse_cf_html` exactly.
+//! ordered and on character boundaries, with fragment markers required when context is
+//! present. Arbitrary fragments must round-trip both with and without context.
 //! A structured branch builds well-formed headers with fuzzed offsets and extra keys so
 //! the fuzzer reaches the offset checks instead of stalling on the `Version:` line.
 #![no_main]
@@ -18,7 +18,7 @@ const END_MARKER: &str = "<!--EndFragment-->";
 struct Field {
     /// 0..=3 selects a known offset key; anything else is an extra key.
     slot: u8,
-    value: u32,
+    value: i32,
     digits: u8,
     extra_key: String,
     crlf: bool,
@@ -39,20 +39,23 @@ fn check_accepted(payload: &str) {
     let Ok(offsets) = parse_cf_html(payload) else {
         return;
     };
-    assert!(offsets.start_html <= offsets.start_fragment);
     assert!(offsets.start_fragment <= offsets.end_fragment);
-    assert!(offsets.end_fragment <= offsets.end_html);
-    assert!(offsets.end_html <= payload.len());
-    for offset in [
-        offsets.start_html,
-        offsets.start_fragment,
-        offsets.end_fragment,
-        offsets.end_html,
-    ] {
-        assert!(payload.is_char_boundary(offset));
+    assert!(offsets.end_fragment <= payload.len());
+    assert!(payload.is_char_boundary(offsets.start_fragment));
+    assert!(payload.is_char_boundary(offsets.end_fragment));
+    match (offsets.start_html, offsets.end_html) {
+        (Some(start), Some(end)) => {
+            assert!(start <= offsets.start_fragment);
+            assert!(offsets.end_fragment <= end);
+            assert!(end <= payload.len());
+            assert!(payload.is_char_boundary(start));
+            assert!(payload.is_char_boundary(end));
+            assert!(payload[start..offsets.start_fragment].ends_with(START_MARKER));
+            assert!(payload[offsets.end_fragment..end].starts_with(END_MARKER));
+        }
+        (None, None) => {}
+        _ => panic!("partially missing context"),
     }
-    assert!(payload[offsets.start_html..offsets.start_fragment].ends_with(START_MARKER));
-    assert!(payload[offsets.end_fragment..offsets.end_html].starts_with(END_MARKER));
     assert_eq!(parse_cf_html(payload), Ok(offsets), "non-deterministic");
 }
 
@@ -77,13 +80,23 @@ fuzz_target!(|input: Input| match input {
     Input::Fragment(fragment) => {
         let payload = encode_cf_html(&fragment);
         let offsets = parse_cf_html(&payload).expect("encoded payload parses");
-        assert_eq!(offsets.start_html, HEADER_LEN);
-        assert_eq!(offsets.end_html, payload.len());
+        assert_eq!(offsets.start_html, Some(HEADER_LEN));
+        assert_eq!(offsets.end_html, Some(payload.len()));
         assert_eq!(
             &payload[offsets.start_fragment..offsets.end_fragment],
             fragment
         );
         check_accepted(&payload);
+
+        let header = "Version:0.9\nStartHTML:-1\nEndHTML:-000000001\n";
+        let start = header.len() + "StartFragment:0000000000\nEndFragment:0000000000\n".len();
+        let end = start + fragment.len();
+        let payload =
+            format!("{header}StartFragment:{start:010}\nEndFragment:{end:010}\n{fragment}");
+        let offsets = parse_cf_html(&payload).expect("markerless payload parses");
+        assert_eq!((offsets.start_html, offsets.end_html), (None, None));
+        assert_eq!((offsets.start_fragment, offsets.end_fragment), (start, end));
+        assert_eq!(&payload[start..end], fragment);
     }
     Input::Structured {
         fields,

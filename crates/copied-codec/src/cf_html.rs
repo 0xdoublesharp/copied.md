@@ -1,7 +1,7 @@
 //! Windows `CF_HTML` clipboard envelope.
 //!
-//! This matches the Lean model `CopiedFormal.CfHtml`. Offsets are UTF-8 byte offsets written
-//! as 10-digit, zero-padded decimals, so the header is always [`HEADER_LEN`] bytes long.
+//! The encoder matches the Lean model `CopiedFormal.CfHtml`. It writes UTF-8 byte offsets
+//! as 10-digit, zero-padded decimals, so its header is always [`HEADER_LEN`] bytes long.
 
 use alloc::string::String;
 
@@ -95,16 +95,18 @@ fn field_slot(key: &str) -> Option<usize> {
     }
 }
 
-/// Parses a Windows `CF_HTML` envelope and validates byte offsets and fragment markers.
+/// Parses a Windows `CF_HTML` envelope and validates its UTF-8 byte offsets.
 ///
 /// The header is a run of `Key:Value` lines starting with `Version`. Unknown keys such as
 /// `SourceURL` are allowed. `StartHTML`, `EndHTML`, `StartFragment` and `EndFragment` must
-/// each appear exactly once as unsigned decimals. The offsets must satisfy
+/// each appear exactly once. With context, all four offsets are unsigned decimals and satisfy
 /// `header end <= StartHTML <= StartFragment <= EndFragment <= EndHTML <= payload length`
-/// and fall on UTF-8 character boundaries. The fragment must sit directly between
-/// `<!--StartFragment-->` and `<!--EndFragment-->`.
+/// with the fragment directly between `<!--StartFragment-->` and `<!--EndFragment-->`.
+/// Without context, both HTML offsets are `-1` and the fragment offsets delimit a slice
+/// after the header. Fragment markers are optional in this form.
 pub fn parse_cf_html(payload: &str) -> Result<CfHtmlOffsets, CodecError> {
-    let mut fields: [Option<usize>; 4] = [None; 4];
+    // The outer Option tracks whether the field appeared. Some(None) is the -1 sentinel.
+    let mut fields: [Option<Option<usize>>; 4] = [None; 4];
     let mut header_end = 0;
     let mut rest = payload;
     while let Some(newline) = rest.find('\n') {
@@ -123,38 +125,51 @@ pub fn parse_cf_html(payload: &str) -> Result<CfHtmlOffsets, CodecError> {
             if fields[slot].is_some() {
                 return Err(CodecError::InvalidCfHtmlHeader);
             }
-            fields[slot] = Some(parse_decimal(value)?);
+            let no_context = slot < 2
+                && value
+                    .strip_prefix('-')
+                    .is_some_and(|digits| digits.trim_start_matches('0') == "1");
+            fields[slot] = Some(if no_context {
+                None
+            } else {
+                Some(parse_decimal(value)?)
+            });
         }
         header_end += newline + 1;
+        // A markerless fragment can itself start with a Key:Value line.
+        if matches!(fields, [Some(None), Some(None), Some(Some(start)), Some(Some(_))] if start == header_end)
+        {
+            break;
+        }
         rest = &rest[newline + 1..];
     }
 
     let [
         Some(start_html),
         Some(end_html),
-        Some(start_fragment),
-        Some(end_fragment),
+        Some(Some(start_fragment)),
+        Some(Some(end_fragment)),
     ] = fields
     else {
         return Err(CodecError::InvalidCfHtmlHeader);
     };
-    let ordered = header_end <= start_html
-        && start_html <= start_fragment
-        && start_fragment <= end_fragment
-        && end_fragment <= end_html
-        && end_html <= payload.len();
-    if !ordered {
+    if header_end > start_fragment || payload.get(start_fragment..end_fragment).is_none() {
         return Err(CodecError::InvalidCfHtmlHeader);
     }
-    for offset in [start_html, start_fragment, end_fragment, end_html] {
-        if !payload.is_char_boundary(offset) {
-            return Err(CodecError::InvalidCfHtmlHeader);
+    match (start_html, end_html) {
+        (Some(start), Some(end)) if header_end <= start => {
+            let marked = payload
+                .get(start..start_fragment)
+                .is_some_and(|prefix| prefix.ends_with(START_MARKER))
+                && payload
+                    .get(end_fragment..end)
+                    .is_some_and(|suffix| suffix.starts_with(END_MARKER));
+            if !marked {
+                return Err(CodecError::InvalidCfHtmlHeader);
+            }
         }
-    }
-    let marked = payload[start_html..start_fragment].ends_with(START_MARKER)
-        && payload[end_fragment..end_html].starts_with(END_MARKER);
-    if !marked {
-        return Err(CodecError::InvalidCfHtmlHeader);
+        (None, None) => {}
+        _ => return Err(CodecError::InvalidCfHtmlHeader),
     }
     Ok(CfHtmlOffsets {
         start_html,
