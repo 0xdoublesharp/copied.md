@@ -10,6 +10,8 @@
 
 copied.md runs locally. Use the macOS menu bar from any app, select text in a browser or VS Code, or pipe Markdown through the CLI. Each uses the same converter.
 
+Download the browser, VS Code, and CLI packages from [GitHub Releases](https://github.com/0xdoublesharp/copied.md/releases).
+
 ## Build from source
 
 Use Node 24.15 or later in the Node 24 LTS line, or Node 26 and later. Use the pnpm version pinned in [package.json](package.json).
@@ -24,11 +26,13 @@ pnpm install --frozen-lockfile
 
 On macOS 13.5 or later with Xcode Command Line Tools installed, run `pnpm build:macos-app` and open `build/portable/copied.md.app`. The package runs on Apple silicon and Intel and includes its runtime. See the [macOS build notes](docs/portable-macos-app.md) for output paths, checks, and signing.
 
+![The macOS format grid after copying as Telegram, with the Telegram card highlighted.](assets/macos-format-picker.png)
+
 1. Copy Markdown, for example with **Copy Message** on a T3 Code reply.
 2. Press **Control–Option–Command–M** (`⌃⌥⌘M`).
-3. Choose a format and paste into the destination.
+3. The shortcut copies in your last-used format and opens the grid. Click another card to replace the copy, or switch to your destination to dismiss the grid and paste.
 
-The app registers the shortcut on launch. Use the clipboard menu to change it, open the format picker, or opt into **Launch at Login**.
+Use **Shortcut Behavior** in the clipboard menu to show the picker first or copy the last-used format without a picker. **Copy Markdown As…** opens the grid before copying. Click a card to copy it, or press Return to use the highlighted format. The gear menu lets you choose three, four, or five columns and hide formats you rarely use.
 
 ### Browser extensions
 

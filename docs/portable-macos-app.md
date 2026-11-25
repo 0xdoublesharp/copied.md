@@ -16,4 +16,14 @@ Run the bundled executable with `--self-test` to check converter output, isolate
 build/portable/copied.md.app/Contents/MacOS/copied-md --self-test
 ```
 
-Open the app and press `⌃⌥⌘M` from another app to check the picker. The app reads the copied Markdown when invoked and checks the clipboard’s change count before writing the selected format. Canceling the picker preserves the clipboard.
+## Use the format grid
+
+![The macOS format grid with a blue border and checkmark on the last-used Telegram card.](../assets/macos-format-picker.png)
+
+Copy Markdown in another app, then press `⌃⌥⌘M`. Choose how the shortcut works in the menu bar under **Shortcut Behavior**.
+
+- **Copy Last Used and Show Picker** copies immediately and opens the grid. Click another card to replace the copy, press Return to dismiss it, or switch to your paste destination. This is the default.
+- **Show Picker First** waits for you to click a card or press Return to copy the highlighted format.
+- **Copy Last Used Only** copies immediately without opening the grid.
+
+Use **Copy Markdown As…** from the menu bar whenever you want to choose before copying. The gear menu saves your column count and visible formats. The app remembers a format after a successful clipboard write and uses the original Markdown if you replace an automatic copy.
