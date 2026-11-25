@@ -30,19 +30,45 @@ fields = ["text/plain", "text/html", "text/signal", "metrics"]
 cases = ["headings-and-styles"]
 
 [[divergence]]
-id = "telegram-native-spoilers"
-title = "Telegram spoilers use <tg-spoiler> and never leak into plain text or RTF"
+id = "telegram-native-markdown"
+title = "Telegram plain text uses native Markdown"
 rationale = """
-The oracle ignored `<span data-spoiler="true">` for Telegram, so spoiler text
-was pasted in the clear in every representation. Telegram's HTML clipboard
-format supports `<tg-spoiler>`, so valid spoilers are now kept hidden there,
-while text/plain and text/rtf (which cannot hide text) show
-`[spoiler omitted]` with an info diagnostic. A malformed spoiler (crossing
-emphasis, unclosed) fails closed in every representation with a warning, using
-the same validity rules as Signal.
+Telegram for macOS recognizes its double emphasis delimiters, inline code,
+and fenced code in plain text. The renderer uses these markers for headings
+and styles, and closes emphasis around inline code so the code delimiters
+can be parsed as an independent entity. The outer emphasis wins when styles
+overlap. The decorative Unicode preference still uses the Unicode renderer.
 """
 targets = ["telegram"]
-fields = ["text/plain", "text/html", "text/rtf", "diagnostics", "metrics"]
+fields = ["text/plain", "metrics"]
+cases = ["whitespace-only", "clipboard-fidelity", "headings-and-styles", "tables-gfm-and-html", "code-blocks-and-backticks", "telegram-rtf-unicode-and-tabs", "x-weighted-length"]
+
+[[divergence]]
+id = "telegram-omit-rtf"
+title = "Telegram clipboard payloads use HTML and plain text"
+rationale = """
+Telegram for macOS prioritizes RTF, whose standard text attributes do not
+carry the native message entities through its paste path. Excluding RTF lets
+macOS use the native Markdown in plain text, while clients that accept HTML
+still receive rich content.
+"""
+targets = ["telegram"]
+fields = ["text/rtf"]
+cases = ["whitespace-only", "clipboard-fidelity", "headings-and-styles", "links-and-urls", "images-and-linked-images", "lists-and-tasks", "footnotes-and-hr", "tables-gfm-and-html", "code-blocks-and-backticks", "blockquotes-nested", "signal-spoilers-valid", "signal-spoilers-malformed", "telegram-rtf-unicode-and-tabs", "x-weighted-length", "raw-html-sanitization"]
+
+[[divergence]]
+id = "telegram-native-spoilers"
+title = "Telegram spoilers use native HTML and Markdown with a fail-closed fallback"
+rationale = """
+The oracle ignored `<span data-spoiler="true">` for Telegram, so spoiler text
+was pasted in the clear. HTML uses `<tg-spoiler>` and plain text uses `||`.
+When a spoiler cannot be recognized as its own Markdown entity or decorative
+Unicode is selected, plain text shows `[spoiler omitted]` with an info
+diagnostic. A malformed spoiler fails closed on both surfaces with a warning,
+using the same validity rules as Signal.
+"""
+targets = ["telegram"]
+fields = ["text/plain", "text/html", "diagnostics", "metrics"]
 cases = ["clipboard-fidelity", "signal-spoilers-valid", "signal-spoilers-malformed"]
 
 [[divergence]]
@@ -79,15 +105,26 @@ fields = ["text/plain", "text/html", "metrics"]
 cases = ["clipboard-fidelity", "tables-gfm-and-html"]
 
 [[divergence]]
+id = "slack-api-code-table-pipes"
+title = "Slack API table cells keep literal pipes inside code blocks"
+rationale = """
+Slack displays backslashes literally in fenced code blocks. Removing the
+table pipe escape preserves cell content and the pipe in mrkdwn link syntax.
+"""
+targets = ["slack-api"]
+fields = ["text/plain", "metrics"]
+cases = ["clipboard-fidelity", "tables-gfm-and-html"]
+
+[[divergence]]
 id = "teams-word-quote-and-code-styles"
-title = "Teams and Word style block quotes and give code a subtle background"
+title = "Teams and Word preserve contrast and header alignment"
 rationale = """
 Teams and Word drop the default browser styling of `<blockquote>` and render
 code with no visual separation, so pasted quotes looked like ordinary
-paragraphs. Fixed, sanitizer-independent inline styles are now added after
-sanitization: block quotes get a left border, margin, padding, and muted color,
-and `pre`/`code` get `background-color: #f4f4f4` alongside the existing font
-styles.
+paragraphs. Inline styles added after sanitization use a translucent neutral
+quote border and translucent backgrounds for code and Word table headers.
+These colors work with the destination's foreground on light and dark
+surfaces. Header text alignment follows the sanitized GFM column alignment.
 """
 targets = ["teams", "word"]
 fields = ["text/html"]
@@ -95,14 +132,13 @@ cases = ["whitespace-only", "clipboard-fidelity", "headings-and-styles", "tables
 
 [[divergence]]
 id = "task-list-checkbox-glyphs"
-title = "Visible checkbox glyphs for task lists in Slack, Teams, and Word"
+title = "Visible checkbox glyphs for task lists in Rich Text, Slack, Teams, and Word"
 rationale = """
-Slack, Teams, and Word strip `<input type="checkbox">` on paste, which silently
-removed the done/open state of GFM task items. The checkbox is now replaced by
-a visible `☑` or `☐` glyph, keeping the single space that already separates
-it from the item text.
+Rich text paste surfaces may strip `<input type="checkbox">`, removing the
+done/open state of GFM task items. A visible `☑` or `☐` glyph keeps that state
+and the single space before the item text. HTML Source keeps semantic inputs.
 """
-targets = ["slack-paste", "teams", "word"]
+targets = ["rich-text", "slack-paste", "teams", "word"]
 fields = ["text/html"]
 cases = ["lists-and-tasks"]
 
@@ -121,3 +157,17 @@ native spoiler can never end up inside an unclosed code block.
 targets = ["discord", "reddit"]
 fields = ["text/plain", "metrics"]
 cases = ["signal-spoilers-valid", "tables-gfm-and-html"]
+
+[[divergence]]
+id = "reddit-indented-code"
+title = "Four-space code blocks for Old and New Reddit"
+rationale = """
+Reddit renders block code using indentation, including within list and quote
+containers. Old Reddit supports this form. A blank line lets code follow
+paragraphs and a thematic break keeps separate code blocks or a list followed
+by a code block from merging. List items that start with code get a visually
+empty first paragraph so Old Reddit parses their block structure.
+"""
+targets = ["reddit"]
+fields = ["text/plain", "metrics"]
+cases = ["whitespace-only", "clipboard-fidelity", "code-blocks-and-backticks", "telegram-rtf-unicode-and-tabs"]

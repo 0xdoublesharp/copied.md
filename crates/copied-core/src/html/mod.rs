@@ -15,6 +15,7 @@ use dom::{HElement, HNode};
 /// Rich paste destinations with post-sanitization adjustments.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Destination {
+    RichText,
     SlackPaste,
     Teams,
     Word,
@@ -36,34 +37,39 @@ fn destination_style(destination: Destination, tag: &str, improved: bool) -> Opt
                 Some("font-family: Consolas, monospace; white-space: pre;")
             }
             (Destination::Word, "code") => Some("font-family: Consolas, monospace;"),
+            (Destination::Teams, "th") => {
+                Some("border: 1px solid #999; padding: 4px 8px; text-align: left;")
+            }
+            (Destination::Word, "th") => Some(
+                "border: 1px solid #999; background-color: #eaeaea; padding: 4pt 6pt; text-align: left;",
+            ),
             (_, "blockquote") => None,
             _ => destination_style(destination, tag, true),
         };
     }
     match (destination, tag) {
-        (Destination::Teams, "pre") => {
-            Some("font-family: monospace; white-space: pre-wrap; background-color: #f4f4f4;")
+        (Destination::Teams, "pre") => Some(
+            "font-family: monospace; white-space: pre-wrap; background-color: rgba(127, 127, 127, 0.14);",
+        ),
+        (Destination::Teams, "code") => {
+            Some("font-family: monospace; background-color: rgba(127, 127, 127, 0.14);")
         }
-        (Destination::Teams, "code") => Some("font-family: monospace; background-color: #f4f4f4;"),
         (Destination::Teams, "table") => Some("border-collapse: collapse;"),
-        (Destination::Teams, "th") => {
-            Some("border: 1px solid #999; padding: 4px 8px; text-align: left;")
-        }
-        (Destination::Teams, "td") => Some("border: 1px solid #999; padding: 4px 8px;"),
-        (Destination::Word, "pre") => {
-            Some("font-family: Consolas, monospace; white-space: pre; background-color: #f4f4f4;")
-        }
+        (Destination::Teams, "th" | "td") => Some("border: 1px solid #999; padding: 4px 8px;"),
+        (Destination::Word, "pre") => Some(
+            "font-family: Consolas, monospace; white-space: pre; background-color: rgba(127, 127, 127, 0.14);",
+        ),
         (Destination::Word, "code") => {
-            Some("font-family: Consolas, monospace; background-color: #f4f4f4;")
+            Some("font-family: Consolas, monospace; background-color: rgba(127, 127, 127, 0.14);")
         }
         (Destination::Word, "table") => Some("border-collapse: collapse; border: 1px solid #999;"),
         (Destination::Word, "th") => Some(
-            "border: 1px solid #999; background-color: #eaeaea; padding: 4pt 6pt; text-align: left;",
+            "border: 1px solid #999; background-color: rgba(127, 127, 127, 0.12); padding: 4pt 6pt;",
         ),
         (Destination::Word, "td") => Some("border: 1px solid #999; padding: 4pt 6pt;"),
-        (Destination::Teams | Destination::Word, "blockquote") => {
-            Some("border-left: 3px solid #ccc; margin: 8px 0; padding-left: 12px; color: #555;")
-        }
+        (Destination::Teams | Destination::Word, "blockquote") => Some(
+            "border-left: 3px solid rgba(127, 127, 127, 0.45); margin: 8px 0; padding-left: 12px; opacity: 0.85;",
+        ),
         _ => None,
     }
 }
@@ -72,7 +78,17 @@ fn apply_styles(nodes: &mut [HNode], destination: Destination, improved: bool) {
     for node in nodes {
         if let HNode::Element(element) = node {
             if let Some(style) = destination_style(destination, &element.name, improved) {
-                element.set_attr("style", style.to_owned());
+                let style = if improved && element.name == "th" {
+                    let align = match element.attr("align") {
+                        Some("center") => "center",
+                        Some("right") => "right",
+                        _ => "left",
+                    };
+                    format!("{style} text-align: {align};")
+                } else {
+                    style.to_owned()
+                };
+                element.set_attr("style", style);
             }
             apply_styles(&mut element.children, destination, improved);
         }
@@ -199,8 +215,10 @@ fn render_safe(
     }
     match destination {
         Some(Destination::SlackPaste) => tables_to_code(&mut clean, improved),
-        Some(destination) => apply_styles(&mut clean, destination, improved),
-        None => {}
+        Some(destination @ (Destination::Teams | Destination::Word)) => {
+            apply_styles(&mut clean, destination, improved);
+        }
+        Some(Destination::RichText) | None => {}
     }
     if improved && destination.is_some() {
         checkboxes_to_glyphs(&mut clean);

@@ -234,6 +234,7 @@ pub struct ClipboardPayload {
     pub plain: String,
     #[serde(rename = "text/html", default, skip_serializing_if = "Option::is_none")]
     pub html: Option<String>,
+    /// Legacy RTF representation produced by the TypeScript oracle.
     #[serde(rename = "text/rtf", default, skip_serializing_if = "Option::is_none")]
     pub rtf: Option<String>,
     #[serde(

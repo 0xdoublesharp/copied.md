@@ -61,6 +61,8 @@ pub(crate) fn convert(
     let children = &document.children;
     let mut diagnostics = document.diagnostics.clone();
     let images = has_images(children);
+    let telegram_markdown =
+        improved && target == CopyTarget::Telegram && !options.decorative_unicode;
 
     // Validity comes from the uncollapsed Signal render: collapsing repeated bold
     // can hide a spoiler that crosses emphasis the Markdown targets still emit.
@@ -122,14 +124,27 @@ pub(crate) fn convert(
                             target,
                             CopyTarget::Facebook | CopyTarget::Twitter | CopyTarget::Telegram
                         ),
-                    telegram: (target == CopyTarget::Telegram).then_some(Telegram::Plain),
+                    telegram: (target == CopyTarget::Telegram).then_some(if telegram_markdown {
+                        Telegram::Markdown
+                    } else {
+                        Telegram::Plain
+                    }),
                     improved,
                     spoilers: spoiler_target,
                     ..TextOptions::default()
                 },
             );
             if spoiler_target {
-                spoilers::resolve(&raw, Surface::Plain, false).text
+                let surface = if telegram_markdown {
+                    Surface::TelegramMarkdown
+                } else {
+                    Surface::Plain
+                };
+                let resolved = spoilers::resolve(&raw, surface, !malformed);
+                if resolved.omitted > 0 {
+                    diagnostics.push(spoiler_diagnostic(malformed, "Telegram"));
+                }
+                resolved.text
             } else {
                 raw
             }
@@ -144,27 +159,18 @@ pub(crate) fn convert(
             spoilers: spoiler_target,
             ..TextOptions::default()
         };
-        if !representations.plain.is_empty() {
-            let rtf = render_text(children, telegram(Telegram::Rtf));
-            representations.rtf = Some(if spoiler_target {
-                spoilers::resolve(&rtf, Surface::Rtf, false).text
-            } else {
-                rtf
-            });
+        if !improved && !representations.plain.is_empty() {
+            representations.rtf = Some(render_text(children, telegram(Telegram::Rtf)));
         }
         let html = render_text(children, telegram(Telegram::Html));
         if spoiler_target {
             let resolved = spoilers::resolve(&html, Surface::TelegramHtml, !malformed);
-            if resolved.regions > 0 {
-                diagnostics.push(if malformed {
-                    spoiler_diagnostic(true, "Telegram")
-                } else {
-                    diagnostic(
-                        DiagnosticCode::SpoilerOmitted,
-                        DiagnosticSeverity::Info,
-                        "Plain-text and RTF paste omit Telegram spoilers.",
-                    )
-                });
+            if resolved.omitted > 0
+                && !diagnostics
+                    .iter()
+                    .any(|d| d.code == DiagnosticCode::SpoilerOmitted)
+            {
+                diagnostics.push(spoiler_diagnostic(malformed, "Telegram"));
             }
             representations.html = Some(resolved.text);
         } else {
@@ -201,6 +207,7 @@ pub(crate) fn convert(
         }
     } else if definition.rich || target == CopyTarget::HtmlSource {
         let destination = match target {
+            CopyTarget::RichText => Some(Destination::RichText),
             CopyTarget::Teams => Some(Destination::Teams),
             CopyTarget::Word => Some(Destination::Word),
             CopyTarget::SlackPaste => Some(Destination::SlackPaste),

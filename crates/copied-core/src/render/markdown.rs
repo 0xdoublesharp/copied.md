@@ -6,7 +6,7 @@
 use super::spoilers::{
     CLOSE_SPAN, OPEN_OMITTED, OPEN_SPAN, OPEN_SPOILER, is_spoiler_span, partial_spoiler_start,
 };
-use super::text::{TextOptions, render_text};
+use super::text::{TextOptions, longest_streak, render_text};
 use crate::ast::{Align, Node};
 use crate::document::footnote_numbers;
 use crate::html::dom::HElement;
@@ -665,20 +665,6 @@ fn encode_info(outside: Option<char>, inside: Option<char>, marker: char) -> (bo
     }
 }
 
-fn longest_streak(value: &str, ch: char) -> usize {
-    let mut longest = 0;
-    let mut current = 0;
-    for c in value.chars() {
-        if c == ch {
-            current += 1;
-            longest = longest.max(current);
-        } else {
-            current = 0;
-        }
-    }
-    longest
-}
-
 fn indent_lines(value: &str, map: impl Fn(&str, usize, bool) -> String) -> String {
     let mut out = String::with_capacity(value.len());
     let mut line = 0;
@@ -719,6 +705,12 @@ fn has_literal_break(nodes: &[Node]) -> bool {
     })
 }
 
+fn has_block_code(nodes: &[Node]) -> bool {
+    nodes.iter().any(|node| {
+        matches!(node, Node::Code { .. }) || node.children().is_some_and(|c| has_block_code(c))
+    })
+}
+
 #[derive(Debug, Clone, Copy, Default)]
 struct Info<'a> {
     before: &'a str,
@@ -733,6 +725,7 @@ struct Serializer {
     bullet_last_used: Option<char>,
     encode_surrounding: Option<(bool, bool)>,
     clipboard: bool,
+    indented_code: bool,
 }
 
 impl Serializer {
@@ -868,7 +861,18 @@ impl Serializer {
                 self.bullet_last_used = None;
             }
             if index + 1 < nodes.len() {
-                out.push_str(&between(node, &nodes[index + 1], parent_spread));
+                let next = &nodes[index + 1];
+                if self.indented_code && matches!(next, Node::Code { .. }) {
+                    if matches!(node, Node::List { .. } | Node::Code { .. }) {
+                        // A blank line alone leaves this code in the preceding list
+                        // or code block. A thematic break works in both Reddit parsers.
+                        out.push_str("\n\n***\n\n");
+                    } else {
+                        out.push_str("\n\n");
+                    }
+                } else {
+                    out.push_str(&between(node, next, parent_spread));
+                }
             }
         }
         self.index_stack.pop();
@@ -1169,6 +1173,15 @@ impl Serializer {
     }
 
     fn code(&mut self, raw: &str, lang: Option<&str>, meta: Option<&str>) -> String {
+        if self.indented_code {
+            return indent_lines(raw, |line, _, blank| {
+                if blank {
+                    String::new()
+                } else {
+                    format!("    {line}")
+                }
+            });
+        }
         let sequence = "`".repeat((longest_streak(raw, '`') + 1).max(3));
         self.enter("codeFenced");
         let mut value = sequence.clone();
@@ -1276,11 +1289,26 @@ impl Serializer {
             bullet = format!("{}{bullet}", u64::from(start.unwrap_or(1)) + index as u64);
         }
         let size = bullet.chars().count() + 1;
+        // Old Reddit removes up to four continuation spaces from list lines.
+        // Align the item content at that column before adding the code indent.
+        let padding = if self.indented_code && has_block_code(children) {
+            size.max(4)
+        } else {
+            size
+        };
         self.enter("listItem");
-        let flow = self.container_flow(children, Some(*spread));
+        let mut flow = self.container_flow(children, Some(*spread));
         self.exit();
-        let indent = " ".repeat(size);
-        let marker = format!("{bullet} ");
+        if self.indented_code
+            && matches!(children.first(), Some(Node::Code { .. }))
+            && !flow.is_empty()
+        {
+            // Old Reddit requires a blank line within the item to parse its blocks.
+            // A visually empty first paragraph separates the list marker from the code.
+            flow.insert_str(0, "&nbsp;\n\n");
+        }
+        let indent = " ".repeat(padding);
+        let marker = format!("{bullet}{}", " ".repeat(padding - size + 1));
         let mut value = indent_lines(&flow, |line, index, blank| {
             if index > 0 {
                 if blank {
@@ -1578,8 +1606,16 @@ pub(crate) fn render_markdown(children: &[Node], opts: MarkdownOptions) -> Strin
         numbers: &numbers,
     }
     .flow(children.to_vec());
-    let mut serializer = Serializer::default();
-    js_trim_end(&serializer.root(&prepared)).to_owned()
+    let mut serializer = Serializer {
+        indented_code: opts.improved && opts.flavor == Flavor::Reddit,
+        ..Serializer::default()
+    };
+    let output = serializer.root(&prepared);
+    if serializer.indented_code {
+        output.trim_end_matches(['\r', '\n']).to_owned()
+    } else {
+        js_trim_end(&output).to_owned()
+    }
 }
 
 #[cfg(test)]

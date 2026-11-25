@@ -10,6 +10,7 @@ use crate::html::dom::HElement;
 use crate::html::tables::{align_rows, table_as_text};
 use crate::html::text::{TextHooks, html_text};
 use crate::url::{is_js_whitespace, js_trim, js_trim_end};
+use std::borrow::Cow;
 use std::collections::{BTreeMap, HashMap};
 use std::fmt::Write as _;
 
@@ -17,9 +18,14 @@ use std::fmt::Write as _;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Telegram {
     Plain,
+    Markdown,
     Rtf,
     Html,
 }
+
+// Carries inline code through surrounding inline containers without styling it.
+// Literal occurrences are replaced by `escape` before the renderer adds its own.
+const TELEGRAM_CODE_BOUNDARY: char = '\u{FDD4}';
 
 /// Rendering switches (`TextOptions`).
 #[allow(clippy::struct_excessive_bools)]
@@ -92,17 +98,29 @@ impl Renderer {
         self.opts.telegram == Some(Telegram::Html)
     }
 
+    fn telegram_markdown(&self) -> bool {
+        self.opts.telegram == Some(Telegram::Markdown)
+    }
+
     fn html(&self) -> bool {
         self.telegram_html() || self.opts.signal
     }
 
     fn escape(&self, value: &str) -> String {
-        if self.rtf() {
-            escape_rtf_utf16(value)
-        } else if self.opts.slack_api || self.html() {
-            html_escape(value)
+        let value = if self.opts.spoilers && self.opts.telegram.is_some() {
+            // Markdown and HTML entities can decode to a sentinel after parsing.
+            spoilers::neutralize(value)
         } else {
-            value.to_owned()
+            Cow::Borrowed(value)
+        };
+        if self.rtf() {
+            escape_rtf_utf16(&value)
+        } else if self.opts.slack_api || self.html() {
+            html_escape(&value)
+        } else if self.telegram_markdown() {
+            value.replace(TELEGRAM_CODE_BOUNDARY, "\u{FFFD}")
+        } else {
+            value.into_owned()
         }
     }
 
@@ -259,7 +277,19 @@ impl Renderer {
         self.styled(value, style)
     }
 
-    fn wrap_style(&self, value: String, already: bool, html_tag: &str, marker: char) -> String {
+    fn wrap_style(&self, value: String, style: Style, html_tag: &str, marker: char) -> String {
+        let (delimiter, already) = match marker {
+            '*' => ("**", style.bold),
+            '_' => ("__", style.italic),
+            _ => ("~~", style.strike),
+        };
+        if self.telegram_markdown() {
+            // Telegram parses each emphasis run as a single entity.
+            if style.bold || style.italic || style.strike {
+                return value;
+            }
+            return telegram_emphasis(&value, delimiter);
+        }
         if self.opts.improved && already && (self.html() || self.chat_markup()) {
             return value;
         }
@@ -285,7 +315,7 @@ impl Renderer {
                             ..style
                         },
                     );
-                    out.push_str(&self.wrap_style(value, style.bold, "strong", '*'));
+                    out.push_str(&self.wrap_style(value, style, "strong", '*'));
                 }
                 Node::Emphasis(children) => {
                     let value = self.inline(
@@ -295,7 +325,7 @@ impl Renderer {
                             ..style
                         },
                     );
-                    out.push_str(&self.wrap_style(value, style.italic, "em", '_'));
+                    out.push_str(&self.wrap_style(value, style, "em", '_'));
                 }
                 Node::Delete(children) => {
                     let value = self.inline(
@@ -305,7 +335,7 @@ impl Renderer {
                             ..style
                         },
                     );
-                    out.push_str(&self.wrap_style(value, style.strike, "s", '~'));
+                    out.push_str(&self.wrap_style(value, style, "s", '~'));
                 }
                 Node::InlineCode(value) => out.push_str(&self.inline_code(value)),
                 Node::Link { url, children, .. } => {
@@ -342,7 +372,11 @@ impl Renderer {
     }
 
     fn inline_code(&self, value: &str) -> String {
-        if self.opts.signal {
+        if self.telegram_markdown() {
+            let code = self.escape(value);
+            let fence = if code.contains('`') { "" } else { "`" };
+            format!("{TELEGRAM_CODE_BOUNDARY}{fence}{code}{fence}{TELEGRAM_CODE_BOUNDARY}")
+        } else if self.opts.signal {
             format!(
                 "<span data-monospace=\"true\">{}</span>",
                 self.escape(value)
@@ -378,7 +412,7 @@ impl Renderer {
                         ..Style::default()
                     },
                 );
-                self.wrap_style(value, false, "strong", '*')
+                self.wrap_style(value, Style::default(), "strong", '*')
             }
             Node::Blockquote(children) => {
                 let content = self.blocks(children, "\n\n", false);
@@ -401,7 +435,7 @@ impl Renderer {
                     .collect::<Vec<_>>()
                     .join("\n")
             }
-            Node::Code { value, .. } => self.code(value),
+            Node::Code { value, lang, .. } => self.code(value, lang.as_deref()),
             Node::List {
                 ordered,
                 start,
@@ -415,8 +449,17 @@ impl Renderer {
         }
     }
 
-    fn code(&self, value: &str) -> String {
-        if self.opts.signal {
+    fn code(&self, value: &str, language: Option<&str>) -> String {
+        if self.telegram_markdown() {
+            let fence = "`".repeat((longest_streak(value, '`') + 1).max(3));
+            let language = language
+                .filter(|lang| {
+                    lang.bytes()
+                        .all(|b| b.is_ascii_alphanumeric() || b"_+.#-".contains(&b))
+                })
+                .unwrap_or_default();
+            format!("{fence}{language}\n{}\n{fence}", self.escape(value))
+        } else if self.opts.signal {
             format!(
                 "<span data-monospace=\"true\">{}</span>",
                 self.escape(value)
@@ -521,7 +564,8 @@ impl Renderer {
                 return format!("```{}```", align_rows(&cells, true).join("\n"));
             }
         }
-        let escape_pipes = !(self.rtf() || self.telegram_html());
+        let escape_pipes =
+            !(self.rtf() || self.telegram_html() || (self.opts.improved && self.opts.slack_api));
         let text = self
             .cells(rows, escape_pipes)
             .iter()
@@ -534,6 +578,73 @@ impl Renderer {
             text
         }
     }
+}
+
+pub(super) fn longest_streak(value: &str, ch: char) -> usize {
+    let mut longest = 0;
+    let mut current = 0;
+    for c in value.chars() {
+        if c == ch {
+            current += 1;
+            longest = longest.max(current);
+        } else {
+            current = 0;
+        }
+    }
+    longest
+}
+
+fn telegram_emphasis(value: &str, delimiter: &str) -> String {
+    let mut out = String::with_capacity(value.len());
+    let mut start = 0;
+    let mut in_code = false;
+    for (index, ch) in value.char_indices() {
+        if matches!(
+            ch,
+            TELEGRAM_CODE_BOUNDARY | OPEN_SPOILER | OPEN_SPAN | CLOSE_SPAN | '\n'
+        ) {
+            telegram_emphasis_run(&mut out, &value[start..index], delimiter, in_code);
+            out.push(ch);
+            if ch == TELEGRAM_CODE_BOUNDARY {
+                in_code = !in_code;
+            }
+            start = index + ch.len_utf8();
+        }
+    }
+    telegram_emphasis_run(&mut out, &value[start..], delimiter, in_code);
+    out
+}
+
+fn telegram_emphasis_run(out: &mut String, text: &str, delimiter: &str, in_code: bool) {
+    let left = text.trim_start();
+    let core = left.trim_end();
+    if in_code || core.is_empty() || core.contains('`') || core.contains(delimiter) {
+        out.push_str(text);
+        return;
+    }
+    out.push_str(&text[..text.len() - left.len()]);
+    out.push_str(delimiter);
+    out.push_str(core);
+    out.push_str(delimiter);
+    out.push_str(&left[core.len()..]);
+}
+
+fn finish_telegram_markdown(text: &str) -> String {
+    const EMPHASIS: [&str; 3] = ["**", "__", "~~"];
+    let mut out = String::with_capacity(text.len());
+    for (index, segment) in text.split(TELEGRAM_CODE_BOUNDARY).enumerate() {
+        // A split with no intervening whitespace still needs an entity boundary.
+        let touches_emphasis = if index.is_multiple_of(2) {
+            EMPHASIS.iter().any(|marker| segment.starts_with(marker))
+        } else {
+            EMPHASIS.iter().any(|marker| out.ends_with(marker))
+        };
+        if index != 0 && !segment.is_empty() && touches_emphasis {
+            out.push(' ');
+        }
+        out.push_str(segment);
+    }
+    out
 }
 
 fn is_span_open_tag(source: &str) -> bool {
@@ -586,6 +697,7 @@ pub(crate) fn render_text(children: &[Node], opts: TextOptions) -> String {
     match opts.telegram {
         Some(Telegram::Html) => telegram_html_line_breaks(&text),
         Some(Telegram::Rtf) => rtf_document(&text),
+        Some(Telegram::Markdown) => finish_telegram_markdown(&text),
         _ => text,
     }
 }

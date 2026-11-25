@@ -245,8 +245,8 @@ pub(crate) fn signal_spoiler_fallback(html: &str) -> Option<Fallback> {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Surface {
     Plain,
-    Rtf,
     TelegramHtml,
+    TelegramMarkdown,
     Discord,
     Reddit,
 }
@@ -293,52 +293,6 @@ fn html_balance(content: &str) -> (Vec<String>, Vec<String>) {
     (closes, opens)
 }
 
-/// RTF groups in `content`: (unmatched closes, opener prefixes of unmatched groups).
-fn rtf_balance(content: &str) -> (usize, Vec<String>) {
-    let chars: Vec<char> = content.chars().collect();
-    let mut opens: Vec<String> = Vec::new();
-    let mut closes = 0;
-    let mut index = 0;
-    while index < chars.len() {
-        match chars[index] {
-            '\\' => index += 2,
-            '{' => {
-                let mut prefix = String::from("{");
-                index += 1;
-                while chars.get(index) == Some(&'\\')
-                    && chars
-                        .get(index + 1)
-                        .is_some_and(|c| c.is_ascii_alphabetic() || *c == '*')
-                {
-                    prefix.push('\\');
-                    index += 1;
-                    while chars
-                        .get(index)
-                        .is_some_and(|c| c.is_ascii_alphanumeric() || *c == '*' || *c == '-')
-                    {
-                        prefix.push(chars[index]);
-                        index += 1;
-                    }
-                    if chars.get(index) == Some(&' ') {
-                        prefix.push(' ');
-                        index += 1;
-                        break;
-                    }
-                }
-                opens.push(prefix);
-            }
-            '}' => {
-                if opens.pop().is_none() {
-                    closes += 1;
-                }
-                index += 1;
-            }
-            _ => index += 1,
-        }
-    }
-    (closes, opens)
-}
-
 /// Markdown delimiters left unbalanced by removing `content`, re-closed
 /// innermost first.
 fn markdown_balance(content: &str) -> String {
@@ -375,10 +329,6 @@ fn markdown_balance(content: &str) -> String {
 
 fn placeholder(surface: Surface, content: &str) -> String {
     match surface {
-        Surface::Rtf => {
-            let (closes, opens) = rtf_balance(content);
-            format!("{PLACEHOLDER}{}{}", "}".repeat(closes), opens.concat())
-        }
         Surface::TelegramHtml => {
             let (closes, opens) = html_balance(content);
             let mut out = String::from(PLACEHOLDER);
@@ -391,7 +341,7 @@ fn placeholder(surface: Surface, content: &str) -> String {
             out
         }
         Surface::Discord | Surface::Reddit => format!("{PLACEHOLDER}{}", markdown_balance(content)),
-        Surface::Plain => PLACEHOLDER.to_owned(),
+        Surface::Plain | Surface::TelegramMarkdown => PLACEHOLDER.to_owned(),
     }
 }
 
@@ -409,6 +359,13 @@ fn native(surface: Surface, content: &str) -> Option<String> {
             (closes.is_empty() && opens.is_empty() && !blocky)
                 .then(|| format!("<tg-spoiler>{content}</tg-spoiler>"))
         }
+        Surface::TelegramMarkdown => (!content.trim().is_empty()
+            && !unescaped.contains("||")
+            && !content.starts_with('|')
+            && !content.ends_with('|')
+            && !content.contains(['\n', '\r'])
+            && !content.contains("```"))
+        .then(|| format!("||{content}||")),
         Surface::Discord => (!content.is_empty()
             && !unescaped.contains("||")
             && !content.starts_with('|')
@@ -432,8 +389,78 @@ fn native(surface: Surface, content: &str) -> Option<String> {
                 && balanced())
             .then(|| format!(">!{content}!<"))
         }
-        Surface::Plain | Surface::Rtf => None,
+        Surface::Plain => None,
     }
+}
+
+const TELEGRAM_MARKERS: [&str; 7] = ["````", "```", "`", "**", "__", "~~", "||"];
+
+fn telegram_right_boundary(ch: char) -> bool {
+    ch.is_whitespace() || ".,:?!;".contains(ch)
+}
+
+// Telegram macOS matches the first delimited entity, consumes its trailing
+// boundary, and scans the remaining text. An outer entity is opaque. Mirror
+// those rules to check that each intended spoiler is actually a spoiler entity.
+fn telegram_spoilers_parse(text: &str, spoilers: &[(usize, usize)]) -> bool {
+    let mut closers: [Vec<usize>; TELEGRAM_MARKERS.len()] = Default::default();
+    for (start, _) in text.char_indices() {
+        let rest = &text[start..];
+        for (marker, ends) in TELEGRAM_MARKERS.iter().zip(&mut closers) {
+            if let Some(after) = rest.strip_prefix(marker)
+                && after.chars().next().is_none_or(telegram_right_boundary)
+            {
+                ends.push(start);
+            }
+        }
+    }
+
+    let mut wanted = spoilers.iter().copied().peekable();
+    let mut line_ends = text.match_indices('\n').map(|(at, _)| at).peekable();
+    let mut previous = None;
+    let mut from = 0;
+    for (start, ch) in text.char_indices() {
+        let left = previous.replace(ch);
+        let Some(&(spoiler_start, spoiler_end)) = wanted.peek() else {
+            return true;
+        };
+        if start > spoiler_start {
+            return false;
+        }
+        if start < from || (start != from && left.is_some_and(|c: char| !c.is_whitespace())) {
+            continue;
+        }
+        while line_ends.next_if(|end| *end < start).is_some() {}
+        let line_end = line_ends.peek().copied().unwrap_or(text.len());
+        for (kind, marker) in TELEGRAM_MARKERS.iter().enumerate() {
+            if !text[start..].starts_with(marker) {
+                continue;
+            }
+            let body = start + marker.len();
+            let next_close = |kind: usize| {
+                let ends = &closers[kind];
+                ends.get(ends.partition_point(|&end| end <= body))
+                    .map(|&end| (end, TELEGRAM_MARKERS[kind].len()))
+            };
+            let closing = if kind < 2 {
+                next_close(0).into_iter().chain(next_close(1)).min()
+            } else {
+                next_close(kind).filter(|&(end, _)| end <= line_end)
+            };
+            if let Some((end, len)) = closing {
+                from = end + len;
+                from += text[from..].chars().next().map_or(0, char::len_utf8);
+                if start == spoiler_start {
+                    if *marker != "||" || end + len != spoiler_end {
+                        return false;
+                    }
+                    wanted.next();
+                }
+                break;
+            }
+        }
+    }
+    wanted.peek().is_none()
 }
 
 /// Resolves sentinel-marked spoiler regions in rendered output.
@@ -441,12 +468,29 @@ fn native(surface: Surface, content: &str) -> Option<String> {
 /// With `allow_native` false (a malformed spoiler anywhere), every region becomes
 /// the placeholder, and an unclosed region omits everything after it.
 pub(crate) fn resolve(rendered: &str, surface: Surface, allow_native: bool) -> Resolved {
+    let mut telegram_spoilers = Vec::new();
+    let resolved = resolve_rendered(rendered, surface, allow_native, &mut telegram_spoilers);
+    if !telegram_spoilers.is_empty() && !telegram_spoilers_parse(&resolved.text, &telegram_spoilers)
+    {
+        // Removing an ambiguous match can change how other entities are parsed.
+        // Redact all candidates when their delimiters cannot be verified together.
+        return resolve_rendered(rendered, surface, false, &mut Vec::new());
+    }
+    resolved
+}
+
+fn resolve_rendered(
+    rendered: &str,
+    surface: Surface,
+    allow_native: bool,
+    telegram_spoilers: &mut Vec<(usize, usize)>,
+) -> Resolved {
     let mut out = String::with_capacity(rendered.len());
     let mut resolved = Resolved::default();
     let mut depth = 0usize;
     let mut forced = false;
     let mut content = String::new();
-    for ch in rendered.chars() {
+    for (index, ch) in rendered.char_indices() {
         if depth == 0 {
             match ch {
                 OPEN_SPOILER | OPEN_OMITTED => {
@@ -465,10 +509,20 @@ pub(crate) fn resolve(rendered: &str, surface: Surface, allow_native: bool) -> R
                 depth -= 1;
                 if depth == 0 {
                     resolved.regions += 1;
-                    let replacement = (allow_native && !forced)
+                    let fits_telegram = surface != Surface::TelegramMarkdown
+                        || (out.chars().next_back().is_none_or(char::is_whitespace)
+                            && rendered[index + ch.len_utf8()..]
+                                .trim_start_matches([OPEN_SPAN, CLOSE_SPAN])
+                                .chars()
+                                .next()
+                                .is_none_or(telegram_right_boundary));
+                    let replacement = (allow_native && !forced && fits_telegram)
                         .then(|| native(surface, &content))
                         .flatten();
                     if let Some(native) = replacement {
+                        if surface == Surface::TelegramMarkdown {
+                            telegram_spoilers.push((out.len(), out.len() + native.len()));
+                        }
                         out.push_str(&native);
                     } else {
                         resolved.omitted += 1;
@@ -582,13 +636,6 @@ mod tests {
         assert_eq!(
             resolve(&tg, Surface::TelegramHtml, true).text,
             "<strong>a [spoiler omitted]</strong><a>d</a>"
-        );
-        let rtf = format!(
-            "{{\\b a}} {OPEN_SPOILER}{{\\field{{\\*\\fldinst HYPERLINK \"u\"}}{{\\fldrslt la{CLOSE_SPAN}bel}}}}"
-        );
-        assert_eq!(
-            resolve(&rtf, Surface::Rtf, true).text,
-            "{\\b a} [spoiler omitted]{\\field{\\fldrslt bel}}"
         );
         let crossing = format!("Before **{OPEN_SPOILER}private** text{CLOSE_SPAN}");
         assert_eq!(

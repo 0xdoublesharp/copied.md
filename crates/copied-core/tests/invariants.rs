@@ -4,12 +4,14 @@
 //! `COPIED_MD_FUZZ_RUNS` overrides the number of cases (default 200, like the
 //! TypeScript suite).
 
+use copied_core::oracle::convert_markdown_ts_v1;
 use copied_core::{
     ConversionOptions, CopyTarget, DiagnosticCode, DiagnosticSeverity, MetricUnit, TARGETS,
     convert_markdown, resolve_target,
 };
 use html5ever::tendril::TendrilSink;
 use html5ever::{QualName, local_name, namespace_url, ns, parse_fragment};
+use markdown::{ParseOptions, mdast::Node as MarkdownNode, to_mdast};
 use markup5ever_rcdom::{Handle, NodeData, RcDom};
 use proptest::prelude::*;
 use proptest::string::string_regex;
@@ -175,7 +177,7 @@ proptest! {
             let rich = definition.rich && !signal_malformed;
             prop_assert_eq!(reps.html.is_some(), rich && id != CopyTarget::Signal);
             prop_assert_eq!(reps.signal.is_some(), rich && id == CopyTarget::Signal);
-            prop_assert_eq!(reps.rtf.is_some(), id == CopyTarget::Telegram && !reps.plain.is_empty());
+            prop_assert!(reps.rtf.is_none());
 
             if id == CopyTarget::Twitter {
                 prop_assert_eq!(result.metrics.unit, MetricUnit::XWeightedCharacters);
@@ -192,8 +194,12 @@ proptest! {
             if let Some(html) = html {
                 assert_safe_html(html);
             }
-            if let Some(rtf) = &reps.rtf {
-                assert_valid_rtf_groups(rtf);
+            if id == CopyTarget::Telegram {
+                let legacy = convert_markdown_ts_v1(&source, id, &options).representations;
+                prop_assert_eq!(legacy.rtf.is_some(), !legacy.plain.is_empty());
+                if let Some(rtf) = &legacy.rtf {
+                    assert_valid_rtf_groups(rtf);
+                }
             }
             // Spoiler sentinels are internal to these renderers; source copies are neutralized.
             if matches!(id, CopyTarget::Telegram | CopyTarget::Discord | CopyTarget::Reddit) {
@@ -379,6 +385,21 @@ fn assert_not_in_code(value: &str, what: &str) {
     }
 }
 
+fn assert_reddit_code_has_no_spoilers(node: &MarkdownNode) {
+    if let MarkdownNode::Code(code) = node {
+        assert!(
+            !code.value.contains(TOKEN),
+            "spoiler text shown inside a Reddit code block: {:?}",
+            code.value
+        );
+    }
+    if let Some(children) = node.children() {
+        for child in children {
+            assert_reddit_code_has_no_spoilers(child);
+        }
+    }
+}
+
 fn assert_hidden(value: &str, regions: &[(usize, usize)], what: &str) {
     for (index, _) in value.match_indices(TOKEN) {
         assert!(
@@ -404,10 +425,8 @@ proptest! {
         }
 
         let telegram = convert_markdown(&source, CopyTarget::Telegram, &options).representations;
-        assert_hidden(&telegram.plain, &[], "telegram text/plain");
-        if let Some(rtf) = &telegram.rtf {
-            assert_hidden(rtf, &[], "telegram text/rtf");
-        }
+        assert_hidden(&telegram.plain, &paired_regions(&telegram.plain, "||", "||"), "telegram text/plain");
+        assert_not_in_code(&telegram.plain, "telegram text/plain");
         let html = telegram.html.as_deref().unwrap_or_default();
         assert_hidden(html, &paired_regions(html, "<tg-spoiler>", "</tg-spoiler>"), "telegram text/html");
 
@@ -417,6 +436,7 @@ proptest! {
 
         let reddit = convert_markdown(&source, CopyTarget::Reddit, &options).representations.plain;
         assert_hidden(&reddit, &paired_regions(&reddit, ">!", "!<"), "reddit");
-        assert_not_in_code(&reddit, "reddit");
+        let parsed = to_mdast(&reddit, &ParseOptions::gfm()).expect("Reddit Markdown parses");
+        assert_reddit_code_has_no_spoilers(&parsed);
     }
 }

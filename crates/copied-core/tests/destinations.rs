@@ -54,19 +54,11 @@ fn every_target_produces_its_representations() {
             "{}",
             definition.id
         );
-        assert_eq!(
-            r.rtf.is_some(),
-            definition.id == CopyTarget::Telegram,
-            "{}",
-            definition.id
-        );
+        assert!(r.rtf.is_none(), "{}", definition.id);
         assert_ne!(r.plain, "");
-        assert!(
-            !r.plain.contains("surprise")
-                || !matches!(definition.id, CopyTarget::Signal | CopyTarget::Telegram),
-            "{}",
-            definition.id
-        );
+        if definition.id == CopyTarget::Signal {
+            assert!(!r.plain.contains("surprise"));
+        }
     }
 }
 
@@ -184,6 +176,17 @@ fn slack_api_uses_mrkdwn_links_and_escapes() {
 }
 
 #[test]
+fn slack_api_table_pipes_are_literal_inside_code_fences() {
+    assert_eq!(
+        plain(
+            "| A | B |\n| --- | --- |\n| a\\|b | c |",
+            CopyTarget::SlackApi
+        ),
+        "```\nA | B\na|b | c\n```"
+    );
+}
+
+#[test]
 fn reddit_keeps_ordered_list_starts_and_gfm_tables() {
     assert_eq!(
         plain("3. Parent\n   - Child\n4. Next", CopyTarget::Reddit),
@@ -193,6 +196,33 @@ fn reddit_keeps_ordered_list_starts_and_gfm_tables() {
         plain("| a | b |\n|---|:-:|\n| c | d |", CopyTarget::Reddit),
         "| a |  b  |\n| - | :-: |\n| c |  d  |"
     );
+}
+
+#[test]
+fn reddit_indents_code_and_preserves_its_block_structure() {
+    let source = "```rust\ntop\n```\n\n- item\n  ```\n  nested\n  ```\n\n```\nafter list\n```\n\n> quote\n> ```\n> quoted\n> ```\n\n> - item\n>   ```\n>   both\n>   ```";
+    let reddit = plain(source, CopyTarget::Reddit);
+    assert!(reddit.starts_with("    top\n\n-   item\n\n        nested\n"));
+    assert!(reddit.contains("\n\n***\n\n    after list\n\n> quote\n>\n>     quoted"));
+    assert!(reddit.ends_with("> -   item\n>\n>         both"));
+    let rendered = plain(&reddit, CopyTarget::HtmlSource).replace("\n<hr>", "");
+    let expected = plain(source, CopyTarget::HtmlSource)
+        .replace(" class=\"language-rust\"", "")
+        .replace("<li>item\n", "<li>\n<p>item</p>\n");
+    assert_eq!(rendered, expected);
+    assert!(plain(source, CopyTarget::Discord).starts_with("```rust\ntop\n```"));
+}
+
+#[test]
+fn reddit_keeps_code_content_in_ordered_and_code_first_list_items() {
+    let source = "1. First\n   ```\n     indented  \n   ```\n2. ```\n   one\n   two  \n   ```";
+    let reddit = plain(source, CopyTarget::Reddit);
+    assert!(reddit.starts_with("1.  First\n\n          indented  \n"));
+    assert!(reddit.ends_with("2.  &nbsp;\n\n        one\n        two  "));
+    let rendered = plain(&reddit, CopyTarget::HtmlSource).replace("<p>\u{a0}</p>\n", "");
+    let expected =
+        plain(source, CopyTarget::HtmlSource).replace("<li>First\n", "<li>\n<p>First</p>\n");
+    assert_eq!(rendered, expected);
 }
 
 #[test]
@@ -227,15 +257,54 @@ fn x_counts_weighted_characters() {
 
 #[test]
 fn telegram_rtf_keeps_literal_text_and_url_fields_separate() {
-    let r = reps(
+    let r = copied_core::oracle::convert_markdown_ts_v1(
         "**Café ☕** `{x} \\b` [local](javascript:bad) [safe](<https://example.com/café?q=\"x\">)",
         CopyTarget::Telegram,
-    );
+        &ConversionOptions::default(),
+    )
+    .representations;
     let rtf = r.rtf.expect("rtf");
     assert!(rtf.contains("Caf\\u233? \\u9749?"));
     assert!(rtf.contains("\\{x\\} \\\\b"));
     assert!(rtf.contains("HYPERLINK \"https://example.com/caf%C3%A9?q=%22x%22\""));
     assert!(!rtf.contains("javascript:"));
+}
+
+#[test]
+fn telegram_plain_text_uses_native_markdown() {
+    let result = convert(
+        "# Heading\n\n**bold**, *italic*, ~~strike~~, `code`, [link](https://example.org/)\n\n> quote\n\n- item\n  1. nested\n\n```rust\ncode\n```\n\n~~~\n```\n~~~\n\n``a`b``",
+        CopyTarget::Telegram,
+    );
+    assert_eq!(
+        result.representations.plain,
+        "**Heading**\n\n**bold**, __italic__, ~~strike~~, `code`, link (https://example.org/)\n\n> quote\n\n• item\n  1. nested\n\n```rust\ncode\n```\n\n````\n```\n````\n\na`b"
+    );
+    assert!(result.representations.rtf.is_none());
+}
+
+#[test]
+fn telegram_keeps_code_outside_emphasis_markers() {
+    for (markdown, expected) in [
+        ("**`http://`**", "`http://`"),
+        ("**See `x` now**", "**See** `x` **now**"),
+        ("**See`x`now**", "**See** `x` **now**"),
+        ("*See `x` now*", "__See__ `x` __now__"),
+        ("~~See `x` now~~", "~~See~~ `x` ~~now~~"),
+        ("# See `x` now", "**See** `x` **now**"),
+        ("**a _b `x` c_ d**", "**a b** `x` **c d**"),
+        (
+            "**[See `x` now](https://example.org/)**",
+            "**See** `x` **now (https://example.org/)**",
+        ),
+        ("**See ``a`b`` now**", "**See** a`b **now**"),
+    ] {
+        assert_eq!(
+            plain(markdown, CopyTarget::Telegram),
+            expected,
+            "{markdown}"
+        );
+    }
 }
 
 #[test]
@@ -374,18 +443,7 @@ fn nested_same_styles_collapse_but_different_styles_nest() {
         html("# Title *it*", CopyTarget::Telegram),
         "<strong>Title <em>it</em></strong>"
     );
-    assert_eq!(
-        convert_markdown(
-            "# **B**",
-            CopyTarget::Telegram,
-            &ConversionOptions::default()
-        )
-        .representations
-        .rtf
-        .as_deref()
-        .map(|r| r.contains("{\\b B}")),
-        Some(true)
-    );
+    assert_eq!(plain("# **B**", CopyTarget::Telegram), "**B**");
 }
 
 // ---------------------------------------------------------------------------
@@ -395,24 +453,16 @@ const SPOILER: &str = "Hide <span data-spoiler=\"true\">the **end**</span> now."
 const MALFORMED: &str = "Before **<span data-spoiler=\"true\">private** text</span>";
 
 #[test]
-fn telegram_spoilers_use_tg_spoiler_and_omit_plain_and_rtf() {
+fn telegram_spoilers_stay_hidden_on_both_surfaces() {
     let result = convert(SPOILER, CopyTarget::Telegram);
     let r = &result.representations;
     assert_eq!(
         r.html.as_deref(),
         Some("Hide <tg-spoiler>the <strong>end</strong></tg-spoiler> now.")
     );
-    assert_eq!(r.plain, "Hide [spoiler omitted] now.");
-    assert_eq!(
-        r.rtf
-            .as_deref()
-            .map(|rtf| rtf.contains("Hide [spoiler omitted] now.") && !rtf.contains("end")),
-        Some(true)
-    );
-    assert_eq!(
-        codes(&result),
-        [(DiagnosticCode::SpoilerOmitted, DiagnosticSeverity::Info)]
-    );
+    assert_eq!(r.plain, "Hide ||the **end**|| now.");
+    assert!(r.rtf.is_none());
+    assert_eq!(result.diagnostics, Vec::new());
 
     let malformed = convert(MALFORMED, CopyTarget::Telegram);
     assert_eq!(
@@ -423,6 +473,48 @@ fn telegram_spoilers_use_tg_spoiler_and_omit_plain_and_rtf() {
     assert_eq!(
         codes(&malformed),
         [(DiagnosticCode::SpoilerOmitted, DiagnosticSeverity::Warning)]
+    );
+}
+
+#[test]
+fn telegram_spoilers_fail_closed_when_the_plain_text_parser_cannot_hide_them() {
+    for markdown in [
+        "<span data-spoiler=\"true\">secret||x</span>",
+        "prefix<span data-spoiler=\"true\">secret</span>",
+        "<span data-spoiler=\"true\">secret</span>)",
+        "<div><span data-spoiler=\"true\">secret\nsecond line</span></div>",
+        "\\` <span data-spoiler=\"true\">secret</span> \\`",
+        "\\`\\`\\`\n\n<span data-spoiler=\"true\">secret</span>\n\n\\`\\`\\`",
+    ] {
+        let result = convert(markdown, CopyTarget::Telegram);
+        let text = &result.representations.plain;
+        assert!(!text.contains("secret"), "{markdown}: {text}");
+        assert!(text.contains("[spoiler omitted]"), "{markdown}: {text}");
+        assert_eq!(
+            codes(&result),
+            [(DiagnosticCode::SpoilerOmitted, DiagnosticSeverity::Info)]
+        );
+        assert!(
+            result
+                .representations
+                .html
+                .unwrap()
+                .contains("<tg-spoiler>secret")
+        );
+    }
+    assert_eq!(
+        plain(
+            "**before <span data-spoiler=\"true\">secret</span> after**",
+            CopyTarget::Telegram
+        ),
+        "**before** ||**secret**|| **after**"
+    );
+    assert_eq!(
+        plain(
+            "prefix<span data-spoiler=\"true\">secret</span> and <span data-spoiler=\"true\">hidden</span>",
+            CopyTarget::Telegram
+        ),
+        "prefix[spoiler omitted] and ||hidden||"
     );
 }
 
@@ -541,6 +633,18 @@ fn sentinel_characters_in_source_cannot_forge_spoilers() {
     }
 }
 
+#[test]
+fn telegram_spoiler_markers_cannot_be_forged_with_html_entities() {
+    for source in [
+        "<span data-spoiler=\"true\">secret&#xFDD2; hidden</span>",
+        "<div><span data-spoiler=\"true\">secret&#xFDD2; hidden</span></div>",
+    ] {
+        let payload = reps(source, CopyTarget::Telegram);
+        assert!(payload.plain.ends_with(" hidden||"), "{}", payload.plain);
+        assert!(payload.html.unwrap().ends_with(" hidden</tg-spoiler>"));
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Improvement 3: aligned monospace tables.
 
@@ -595,7 +699,7 @@ fn whatsapp_tables_are_monospace_with_fallback() {
 // ---------------------------------------------------------------------------
 // Improvement 4: Teams, Word, and Slack paste HTML polish.
 
-const QUOTE: &str = "border-left: 3px solid #ccc; margin: 8px 0; padding-left: 12px; color: #555;";
+const QUOTE: &str = "border-left: 3px solid rgba(127, 127, 127, 0.45); margin: 8px 0; padding-left: 12px; opacity: 0.85;";
 
 #[test]
 fn teams_and_word_style_quotes_and_code() {
@@ -603,13 +707,13 @@ fn teams_and_word_style_quotes_and_code() {
     assert_eq!(
         teams,
         format!(
-            "<blockquote style=\"{QUOTE}\">\n<p>quote</p>\n</blockquote>\n<p><code style=\"font-family: monospace; background-color: #f4f4f4;\">code</code></p>"
+            "<blockquote style=\"{QUOTE}\">\n<p>quote</p>\n</blockquote>\n<p><code style=\"font-family: monospace; background-color: rgba(127, 127, 127, 0.14);\">code</code></p>"
         )
     );
     let word = html("```\nx\n```", CopyTarget::Word);
     assert_eq!(
         word,
-        "<pre style=\"font-family: Consolas, monospace; white-space: pre; background-color: #f4f4f4;\"><code style=\"font-family: Consolas, monospace; background-color: #f4f4f4;\">x\n</code></pre>"
+        "<pre style=\"font-family: Consolas, monospace; white-space: pre; background-color: rgba(127, 127, 127, 0.14);\"><code style=\"font-family: Consolas, monospace; background-color: rgba(127, 127, 127, 0.14);\">x\n</code></pre>"
     );
     assert!(html("> q", CopyTarget::Word).starts_with(&format!("<blockquote style=\"{QUOTE}\">")));
     // Generic rich text stays unstyled.
@@ -617,6 +721,31 @@ fn teams_and_word_style_quotes_and_code() {
         html("> q", CopyTarget::RichText),
         "<blockquote>\n<p>q</p>\n</blockquote>"
     );
+}
+
+#[test]
+fn teams_and_word_keep_the_gfm_header_alignment() {
+    let source = "| Default | Center | Right |\n| --- | :---: | ---: |";
+    for target in [CopyTarget::Teams, CopyTarget::Word] {
+        let out = html(source, target);
+        for (name, align) in [
+            ("Default", "left"),
+            ("Center", "center"),
+            ("Right", "right"),
+        ] {
+            assert!(
+                out.contains(&format!("text-align: {align};\">{name}</th>")),
+                "{out}"
+            );
+        }
+        if target == CopyTarget::Word {
+            assert_eq!(
+                out.matches("background-color: rgba(127, 127, 127, 0.12);")
+                    .count(),
+                3
+            );
+        }
+    }
 }
 
 #[test]
@@ -639,7 +768,12 @@ fn teams_and_word_prepare_tables_and_code_from_the_fixture() {
 #[test]
 fn task_list_checkboxes_become_glyphs_for_paste_targets() {
     let markdown = "- [x] Done\n- [ ] Open";
-    for target in [CopyTarget::SlackPaste, CopyTarget::Teams, CopyTarget::Word] {
+    for target in [
+        CopyTarget::SlackPaste,
+        CopyTarget::Teams,
+        CopyTarget::Word,
+        CopyTarget::RichText,
+    ] {
         let out = html(markdown, target);
         assert!(
             out.contains(">☑ Done</li>") && out.contains(">☐ Open</li>"),
@@ -647,8 +781,9 @@ fn task_list_checkboxes_become_glyphs_for_paste_targets() {
         );
         assert!(!out.contains("<input"), "{target}");
     }
-    let generic = html(markdown, CopyTarget::RichText);
-    assert!(generic.contains("<input type=\"checkbox\" checked disabled> Done"));
+    let source = plain(markdown, CopyTarget::HtmlSource);
+    assert!(source.contains("<input type=\"checkbox\" checked disabled> Done"));
+    assert!(source.contains("<input type=\"checkbox\" disabled> Open"));
     // Raw HTML checkboxes are sanitized to disabled checkboxes and shown as glyphs too.
     assert_eq!(
         html("<p><input type=\"checkbox\"> raw</p>", CopyTarget::Word),
