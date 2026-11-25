@@ -1,5 +1,5 @@
 import type { ClipboardPayload } from '@0xdoublesharp/copied-md-converters';
-import type { ClipboardOutcome, ClipboardType } from './clipboard-writer';
+import { richClipboardType, type ClipboardOutcome, type ClipboardType } from './clipboard-writer';
 
 interface WriteResponse {
   types?: ClipboardType[];
@@ -31,7 +31,7 @@ async function routeCopy(
   frameId?: number,
 ): Promise<ClipboardOutcome> {
   const attempts = [payload];
-  if (payload['text/html']) attempts.push({ 'text/plain': payload['text/plain'] });
+  if (richClipboardType(payload)) attempts.push({ 'text/plain': payload['text/plain'] });
   let lastError: unknown;
   for (const [index, representation] of attempts.entries()) {
     if (tabId !== undefined) {
@@ -69,7 +69,8 @@ async function routeCopy(
 
 function validate(response: WriteResponse | undefined, payload: ClipboardPayload): ClipboardType[] {
   const types = response?.types;
-  if (!types?.includes('text/plain') || (payload['text/html'] && !types.includes('text/html'))) {
+  const richType = richClipboardType(payload);
+  if (!types?.includes('text/plain') || (richType && !types.includes(richType))) {
     throw new Error(response?.error ?? 'The clipboard did not accept the requested format.');
   }
   return types;

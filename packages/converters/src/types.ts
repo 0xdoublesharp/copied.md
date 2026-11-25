@@ -15,6 +15,7 @@ export interface ClipboardPayload {
   'text/plain': string;
   'text/html'?: string;
   'text/rtf'?: string;
+  'text/signal'?: string;
 }
 
 export interface ConversionResult {
@@ -31,7 +32,12 @@ export interface PlatformConverter {
 }
 
 export interface Diagnostic {
-  code: 'unsupported-url' | 'relative-url' | 'formatting-omitted' | 'length-exceeded';
+  code:
+    | 'unsupported-url'
+    | 'relative-url'
+    | 'formatting-omitted'
+    | 'length-exceeded'
+    | 'spoiler-omitted';
   severity: 'warning' | 'info';
   message: string;
 }

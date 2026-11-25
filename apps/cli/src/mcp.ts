@@ -11,7 +11,7 @@ const annotations = {
 };
 
 export async function serveMcp() {
-  const server = new McpServer({ name: 'copied-md', version: '1.1.0' });
+  const server = new McpServer({ name: 'copied-md', version: '1.2.0' });
   server.registerTool(
     'list_copy_targets',
     {
@@ -26,7 +26,8 @@ export async function serveMcp() {
   server.registerTool(
     'convert_markdown',
     {
-      description: 'Convert supplied Markdown into text or HTML for a chosen destination.',
+      description:
+        'Convert supplied Markdown into clipboard representations for a chosen destination.',
       inputSchema: {
         markdown: z.string(),
         target: z.enum(targets.map(({ id }) => id)),

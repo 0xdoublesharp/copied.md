@@ -1,5 +1,5 @@
 import { fromHtml } from 'hast-util-from-html';
-import type { Parent as HtmlParent } from 'hast';
+import type { Element, Parent as HtmlParent } from 'hast';
 import type { Definition, Parent, Root } from 'mdast';
 import remarkGfm from 'remark-gfm';
 import remarkParse from 'remark-parse';
@@ -75,15 +75,25 @@ export function readMarkdown(markdown: string, sourceUrl?: string) {
   return { tree, diagnostics: [...diagnostics.values()] };
 }
 
-export function htmlText(source: string): string {
+interface HtmlTextOptions {
+  escapeText?: (value: string) => string;
+  renderSpan?: (element: Element, content: string) => string;
+}
+
+export function htmlText(
+  source: string,
+  { escapeText = (value) => value, renderSpan }: HtmlTextOptions = {},
+): string {
   const ignored = new Set(['script', 'style', 'template', 'iframe', 'object']);
   const blocks = new Set(['p', 'div', 'section', 'article', 'li', 'tr', 'br']);
   function text(parent: HtmlParent): string {
     return parent.children
       .map((node) => {
-        if (node.type === 'text') return node.value;
+        if (node.type === 'text') return escapeText(node.value);
         if (node.type !== 'element' || ignored.has(node.tagName)) return '';
-        const value = node.tagName === 'img' ? String(node.properties.alt ?? '') : text(node);
+        const value =
+          node.tagName === 'img' ? escapeText(String(node.properties.alt ?? '')) : text(node);
+        if (node.tagName === 'span' && renderSpan) return renderSpan(node, value);
         return blocks.has(node.tagName) ? `${value}\n` : value;
       })
       .join('');

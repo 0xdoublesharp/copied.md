@@ -90,11 +90,12 @@ describe('VS Code copy commands', () => {
     const context = { subscriptions: [] };
     activate(context as never);
     deactivate();
-    expect(context.subscriptions).toHaveLength(9);
+    expect(context.subscriptions).toHaveLength(10);
     expect(mocks.register.mock.calls.map(([id]) => id)).toEqual(
       expect.arrayContaining([
         'copied-md.copyAs',
         'copied-md.copyTo.slack',
+        'copied-md.copyTo.signal',
         'copied-md.copyTo.html',
       ]),
     );
@@ -113,6 +114,24 @@ describe('VS Code copy commands', () => {
     await handler('copied-md.copyTo.slack')();
     expect(mocks.write).toHaveBeenCalledWith('bold and link (https://example.com)');
     expect(mocks.info).toHaveBeenCalledWith(expect.stringContaining('Copied as plain text'));
+  });
+
+  it('passes Signal formatting to the macOS helper', async () => {
+    vi.stubGlobal('process', Object.create(process, { platform: { value: 'darwin' } }));
+    const child = new EventEmitter();
+    const end = vi.fn((_data: string) => child.emit('close', 0));
+    mocks.spawn.mockReturnValue(
+      Object.assign(child, { stdin: Object.assign(new EventEmitter(), { end }) }),
+    );
+    mocks.editor = editor([], 'markdown', '**Signal**');
+
+    await handler('copied-md.copyTo.signal')();
+
+    expect(JSON.parse(end.mock.calls[0][0])).toEqual({
+      representations: { 'text/plain': 'Signal', 'text/signal': '<strong>Signal</strong>' },
+    });
+    expect(mocks.info).toHaveBeenCalledWith('Copied as Signal.');
+    expect(mocks.write).not.toHaveBeenCalled();
   });
 
   it('does not copy a non-Markdown document without a selection', async () => {

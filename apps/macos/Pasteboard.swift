@@ -49,6 +49,7 @@ struct Choice: Encodable {
 
 let preferenceKey = "copied-md.lastTarget"
 let preferences = clipboardPreferences(UserDefaults(suiteName: "md.copied.clipboard"))
+let chromiumCustomData = NSPasteboard.PasteboardType("org.chromium.web-custom-data")
 
 func clipboardPreferences(_ suite: UserDefaults?) -> UserDefaults { suite ?? .standard }
 
@@ -94,6 +95,12 @@ func write(
         }
         types.append("text/rtf")
     }
+    if let signal = request.representations["text/signal"], !signal.isEmpty {
+        guard item.setData(signalPasteboardData(signal), forType: chromiumCustomData) else {
+            throw Failure("The copy could not be prepared.")
+        }
+        types.append("text/signal")
+    }
 
     if let expected = request.expectedChangeCount, expected != pasteboard.changeCount {
         throw Failure("The clipboard changed. Copy the Markdown again.", exitCode: 3)
@@ -107,6 +114,26 @@ func write(
     }
     if let target = request.target { defaults.set(target, forKey: preferenceKey) }
     return Written(types: types, changeCount: prepared)
+}
+
+private func signalPasteboardData(_ html: String) -> Data {
+    // Chromium DataTransfer custom data uses a Pickle with UTF-16 strings aligned to four bytes.
+    func appendUInt32(_ value: UInt32, to data: inout Data) {
+        withUnsafeBytes(of: value.littleEndian) { data.append(contentsOf: $0) }
+    }
+
+    var payload = Data()
+    appendUInt32(1, to: &payload)
+    for value in ["text/signal", html] {
+        let codeUnits = value.utf16.map { $0.littleEndian }
+        appendUInt32(UInt32(codeUnits.count), to: &payload)
+        codeUnits.withUnsafeBytes { payload.append(contentsOf: $0) }
+        payload.append(Data(repeating: 0, count: (4 - payload.count % 4) % 4))
+    }
+    var result = Data()
+    appendUInt32(UInt32(payload.count), to: &result)
+    result.append(payload)
+    return result
 }
 
 @MainActor

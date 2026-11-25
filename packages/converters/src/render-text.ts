@@ -1,6 +1,7 @@
 import type { PhrasingContent, Root, RootContent } from 'mdast';
 import { visit } from 'unist-util-visit';
 import { footnoteNumbers, htmlText } from './document';
+import { signalSpanOpen, spoilerOpen } from './signal-spoilers';
 import { toBold, toBoldItalic, toItalic } from './unicode';
 
 type Style = { bold?: boolean; italic?: boolean; strike?: boolean; insideLink?: boolean };
@@ -8,6 +9,7 @@ interface TextOptions {
   slackApi?: boolean;
   decorativeUnicode?: boolean;
   telegram?: 'plain' | 'rtf' | 'html';
+  signal?: boolean;
 }
 
 function escapeRtf(value: string): string {
@@ -28,9 +30,9 @@ function telegramHtmlLineBreaks(text: string): string {
 
 export function renderText(tree: Root, options: TextOptions = {}): string {
   const notes = footnoteNumbers(tree);
-  const { slackApi, decorativeUnicode, telegram } = options;
+  const { slackApi, decorativeUnicode, telegram, signal } = options;
   const rtf = telegram === 'rtf';
-  const html = telegram === 'html';
+  const html = telegram === 'html' || signal;
 
   function escape(value: string): string {
     if (rtf) return escapeRtf(value);
@@ -55,7 +57,7 @@ export function renderText(tree: Root, options: TextOptions = {}): string {
 
   function link(label: string, url: string): string {
     if (!label || label === url) return escape(url);
-    if (html && !url.startsWith('#')) {
+    if (telegram === 'html' && !url.startsWith('#')) {
       const href = escape(url).replaceAll('"', '&quot;');
       return '<a href="' + href + '">' + label + '</a>';
     }
@@ -70,7 +72,30 @@ export function renderText(tree: Root, options: TextOptions = {}): string {
     }
     if (slackApi && !url.startsWith('#'))
       return '<' + escape(url.replaceAll('|', '%7C')) + '|' + label + '>';
-    return url.startsWith('#') ? label : label + ' (' + url + ')';
+    return url.startsWith('#') ? label : label + ' (' + escape(url) + ')';
+  }
+
+  function rawInline(source: string): string {
+    if (signal) {
+      if (/^<span(?:\s|>)/i.test(source)) {
+        return htmlText(source, { renderSpan: (node) => signalSpanOpen(node) });
+      }
+      if (/^<\/span\s*>$/i.test(source)) return '</span>';
+    }
+    return escape(htmlText(source));
+  }
+
+  function rawBlock(source: string): string {
+    if (!signal) return escape(htmlText(source)).trimEnd();
+    if (/^<\/span\s*>$/i.test(source.trim())) return '</span>';
+    return htmlText(source, {
+      escapeText: escape,
+      renderSpan(node, content) {
+        const original = source.slice(node.position?.start.offset, node.position?.end.offset);
+        const close = /<\/span\s*>$/i.test(original) ? '</span>' : '';
+        return signalSpanOpen(node) + content + close;
+      },
+    }).trimEnd();
   }
 
   function inline(nodes: PhrasingContent[], style: Style = {}): string {
@@ -78,6 +103,12 @@ export function renderText(tree: Root, options: TextOptions = {}): string {
       .map((node) => {
         switch (node.type) {
           case 'text':
+            if (signal) {
+              const partialSpoiler =
+                /<span\s+[^<>\n]*\bdata-spoiler\s*=\s*(?:"true(?=[^"\w])|'true(?=[^'\w])|["']?true\b[^<>\n]*(?=\n|$))/i;
+              const start = node.value.search(partialSpoiler);
+              if (start !== -1) return styled(node.value.slice(0, start), style) + spoilerOpen;
+            }
             return styled(node.value, style);
           case 'strong': {
             const value = inline(node.children, { ...style, bold: true });
@@ -95,6 +126,7 @@ export function renderText(tree: Root, options: TextOptions = {}): string {
             return slackApi ? '~' + value + '~' : value;
           }
           case 'inlineCode':
+            if (signal) return '<span data-monospace="true">' + escape(node.value) + '</span>';
             if (html) return '<code>' + escape(node.value) + '</code>';
             if (rtf) return '{\\f1 ' + escape(node.value) + '}';
             return slackApi && !node.value.includes('`')
@@ -109,7 +141,7 @@ export function renderText(tree: Root, options: TextOptions = {}): string {
           case 'footnoteReference':
             return '[' + notes.get(node.identifier) + ']';
           case 'html':
-            return escape(htmlText(node.value));
+            return rawInline(node.value);
           case 'break':
             return '\n';
           default:
@@ -137,13 +169,16 @@ export function renderText(tree: Root, options: TextOptions = {}): string {
       }
       case 'blockquote': {
         const content = blocks(node.children);
-        if (html) return '<blockquote>' + telegramHtmlLineBreaks(content) + '</blockquote>';
+        if (telegram === 'html')
+          return '<blockquote>' + telegramHtmlLineBreaks(content) + '</blockquote>';
+        const marker = signal ? '&gt;' : '>';
         return content
           .split('\n')
-          .map((line) => (line ? '> ' + line : '>'))
+          .map((line) => marker + (line ? ' ' + line : ''))
           .join('\n');
       }
       case 'code':
+        if (signal) return '<span data-monospace="true">' + escape(node.value) + '</span>';
         if (html) return '<pre>' + escape(node.value).replaceAll('\n', '&#10;') + '</pre>';
         if (rtf) return '{\\f1 ' + escape(node.value) + '}';
         return slackApi && !node.value.includes('```')
@@ -157,7 +192,7 @@ export function renderText(tree: Root, options: TextOptions = {}): string {
             const [first, ...lines] = blocks(item.children, item.spread ? '\n\n' : '\n').split(
               '\n',
             );
-            const indent = (html ? '&nbsp;' : ' ').repeat(marker.length);
+            const indent = (telegram === 'html' ? '&nbsp;' : ' ').repeat(marker.length);
             return (
               escape(marker) +
               task +
@@ -166,7 +201,9 @@ export function renderText(tree: Root, options: TextOptions = {}): string {
                 .map(
                   (line) =>
                     '\n' +
-                    (line && !(html && /^<(?:pre|blockquote)>/.test(line)) ? indent : '') +
+                    (line && !(telegram === 'html' && /^<(?:pre|blockquote)>/.test(line))
+                      ? indent
+                      : '') +
                     line,
                 )
                 .join('')
@@ -179,7 +216,7 @@ export function renderText(tree: Root, options: TextOptions = {}): string {
             row.children
               .map((cell) => {
                 const content = inline(cell.children);
-                return rtf || html ? content : content.replaceAll('|', '\\|');
+                return rtf || telegram === 'html' ? content : content.replaceAll('|', '\\|');
               })
               .join(' | '),
           )
@@ -189,7 +226,7 @@ export function renderText(tree: Root, options: TextOptions = {}): string {
       case 'thematicBreak':
         return escape('———');
       case 'html':
-        return escape(htmlText(node.value)).trimEnd();
+        return rawBlock(node.value);
       default:
         return '';
     }
@@ -208,6 +245,7 @@ export function renderText(tree: Root, options: TextOptions = {}): string {
   ]
     .filter(Boolean)
     .join('\n\n');
+  if (signal) return text.replaceAll('\n', '<br>');
   if (html) return telegramHtmlLineBreaks(text);
   if (!rtf) return text;
   // Telegram treats a tab followed by 0 as an automatic list marker.

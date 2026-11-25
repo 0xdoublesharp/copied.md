@@ -2,6 +2,7 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { writeExact, writeWithFallback } from '@/lib/clipboard-writer';
 
 const rich = { 'text/plain': 'Hello', 'text/html': '<strong>Hello</strong>' };
+const signal = { 'text/plain': 'Hello', 'text/signal': '<strong>Hello</strong>' };
 const write = vi.fn();
 const writeText = vi.fn();
 const exec = vi.fn();
@@ -25,6 +26,7 @@ afterEach(() => {
   Reflect.deleteProperty(navigator, 'clipboard');
   Reflect.deleteProperty(document, 'execCommand');
   vi.unstubAllGlobals();
+  vi.unstubAllEnvs();
   vi.restoreAllMocks();
   document.body.replaceChildren();
 });
@@ -45,6 +47,30 @@ it('uses the plain clipboard API without HTML', async () => {
   expect(await writeExact({ 'text/plain': 'Hello' })).toEqual(['text/plain']);
   expect(writeText).toHaveBeenCalledWith('Hello');
   expect(write).not.toHaveBeenCalled();
+});
+
+it('writes Signal and plain text through a Chromium copy event', async () => {
+  const setData = vi.fn();
+  exec.mockImplementation(() => {
+    const event = new Event('copy', { cancelable: true });
+    Object.defineProperty(event, 'clipboardData', { value: { setData } });
+    document.dispatchEvent(event);
+    return true;
+  });
+  expect(await writeWithFallback(signal)).toEqual({
+    types: ['text/plain', 'text/signal'],
+    fallback: false,
+  });
+  expect(setData.mock.calls).toEqual(Object.entries(signal));
+  expect(write).not.toHaveBeenCalled();
+});
+
+it.each([false, true])('reports plain Signal fallback with Firefox set to %s', async (firefox) => {
+  vi.stubEnv('FIREFOX', firefox ? 'true' : '');
+  exec.mockReturnValue(false);
+  expect(await writeWithFallback(signal)).toEqual({ types: ['text/plain'], fallback: true });
+  expect(exec).toHaveBeenCalledTimes(firefox ? 0 : 1);
+  expect(writeText).toHaveBeenCalledWith('Hello');
 });
 
 it('writes both flavors through a legacy copy event and restores focus and selection', async () => {

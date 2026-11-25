@@ -4,6 +4,7 @@ import { readMarkdown } from './document';
 import { renderMarkdown } from './render-markdown';
 import { renderText } from './render-text';
 import { renderRichHtml } from './rich-html';
+import { signalSpoilerFallback } from './signal-spoilers';
 import type { ClipboardPayload, Diagnostic } from './types';
 
 export const targets = [
@@ -13,6 +14,7 @@ export const targets = [
   { id: 'slack-paste', label: 'Slack', rich: true },
   { id: 'discord', label: 'Discord', rich: false },
   { id: 'telegram', label: 'Telegram', rich: true },
+  { id: 'signal', label: 'Signal', rich: true },
   { id: 'reddit', label: 'Reddit', rich: false },
   { id: 'facebook', label: 'Facebook', rich: false },
   { id: 'twitter', label: 'X', rich: false },
@@ -73,20 +75,34 @@ export function convertMarkdown(
   if (target === 'telegram' && plain) {
     representations['text/rtf'] = renderText(tree, { telegram: 'rtf' });
   }
-  if (profile.rich || target === 'html-source') {
+  if (target === 'signal') {
+    const html = renderText(tree, { signal: true });
+    const fallback = signalSpoilerFallback(html);
+    if (fallback) {
+      representations['text/plain'] = fallback.plain;
+      diagnostics.push({
+        code: 'spoiler-omitted',
+        severity: fallback.malformed ? 'warning' : 'info',
+        message: fallback.malformed
+          ? 'A malformed Signal spoiler was omitted.'
+          : 'Plain-text paste omits Signal spoilers.',
+      });
+    }
+    if (!fallback?.malformed) representations['text/signal'] = html;
+  } else if (profile.rich || target === 'html-source') {
     const html =
       target === 'telegram'
         ? renderText(tree, { telegram: 'html' })
         : renderRichHtml(tree, options.sourceUrl);
     if (target === 'html-source') representations['text/plain'] = html;
     else representations['text/html'] = html;
-    if (hasImages)
-      diagnostics.push({
-        code: 'formatting-omitted',
-        severity: 'info',
-        message: 'Images are represented as links.',
-      });
   }
+  if (hasImages && (profile.rich || target === 'html-source'))
+    diagnostics.push({
+      code: 'formatting-omitted',
+      severity: 'info',
+      message: 'Images are represented as links.',
+    });
 
   const output = representations['text/plain'];
   const weighted = target === 'twitter' ? twitterText.parseTweet(output).weightedLength : undefined;

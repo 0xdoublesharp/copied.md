@@ -112,13 +112,13 @@ private final class RejectingPasteboardItem: NSPasteboardItem {
         type != .html && super.setString(string, forType: type)
     }
     override func setData(_ data: Data, forType type: NSPasteboard.PasteboardType) -> Bool {
-        type != .rtf && super.setData(data, forType: type)
+        type != .rtf && type != chromiumCustomData && super.setData(data, forType: type)
     }
 }
 
 private func pasteboardFailures() throws {
     let board = InterleavedPasteboard()
-    for flavor in ["text/html", "text/rtf"] {
+    for flavor in ["text/html", "text/rtf", "text/signal"] {
         try expectFailure("could not be prepared") {
             let request = WriteRequest(representations: ["text/plain": "Example", flavor: "Example"],
                                        expectedChangeCount: 0, target: nil)
@@ -168,10 +168,10 @@ private func shortcutInvariants() throws {
         )!
     }
     let defaultShortcut = Shortcut.defaultShortcut()
-    try expect(defaultShortcut.label == "⌃⌥⌘M", "Unexpected default shortcut.")
-    try expect(Shortcut.defaultShortcut { nil }.keyCode == UInt32(kVK_ANSI_M), "The fallback key must be ANSI M.")
-    try expect(Shortcut.findM { _ in nil } == nil, "A layout without M must fall back to the ANSI key.")
-    try expect(Shortcut.findM { $0 == 17 ? "M" : "N" } == 17, "The keyboard layout's M mapping was ignored.")
+    try expect(defaultShortcut.label == "⌃⌘C", "Unexpected default shortcut.")
+    try expect(Shortcut.defaultShortcut { nil }.keyCode == UInt32(kVK_ANSI_C), "The fallback key must be ANSI C.")
+    try expect(Shortcut.findC { _ in nil } == nil, "A layout without C must fall back to the ANSI key.")
+    try expect(Shortcut.findC { $0 == 17 ? "C" : "N" } == 17, "The keyboard layout's C mapping was ignored.")
     try expectFailure("already in use") {
         try GlobalHotKey.checkRegistration(OSStatus(eventHotKeyExistsErr), receivedHandle: false, shortcut: defaultShortcut)
     }
@@ -858,6 +858,23 @@ private func runtimeInvariants(_ bundle: URL, node: URL, converter: URL, default
     let range = (rich.string as NSString).range(of: "Notes")
     let link = rich.attribute(.link, at: range.location, effectiveRange: nil)
     try expect(String(describing: link ?? "") == "https://example.org/notes", "AppKit dropped the link.")
+    try expect(catalog.contains { $0.id == "signal" }, "Bundled converter omitted Signal.")
+    let signal = try runtime.convert("~~😀~~", to: "signal")
+    let signalWrite = try write(
+        WriteRequest(representations: signal.representations, expectedChangeCount: board.changeCount, target: nil),
+        to: board
+    )
+    let signalType = NSPasteboard.PasteboardType("org.chromium.web-custom-data")
+    let signalBytes = Data([
+        56, 0, 0, 0, 1, 0, 0, 0, 11, 0, 0, 0,
+        116, 0, 101, 0, 120, 0, 116, 0, 47, 0, 115, 0, 105, 0, 103, 0, 110, 0, 97, 0, 108, 0, 0, 0,
+        9, 0, 0, 0, 60, 0, 115, 0, 62, 0, 61, 216, 0, 222, 60, 0, 47, 0, 115, 0, 62, 0, 0, 0,
+    ])
+    try expect(signalWrite.types == ["text/plain", "text/signal"] && board.string(forType: .string) == "😀",
+               "Signal did not publish its custom flavor and plain-text fallback.")
+    try expect(board.data(forType: signalType) == signalBytes, "Signal clipboard data did not match Chromium's wire format.")
+    _ = try write(WriteRequest(representations: ["text/plain": "Plain"], expectedChangeCount: nil, target: nil), to: board)
+    try expect(board.data(forType: signalType) == nil, "A later plain copy retained stale Signal formatting.")
     let large = String(repeating: "Abcd😀 ", count: 25000)
     let largeResult = try runtime.convert(large, to: "plain-text")
     try expect(largeResult.representations["text/plain"] == large.trimmingCharacters(in: .whitespaces),

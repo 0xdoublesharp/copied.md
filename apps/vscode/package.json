@@ -2,7 +2,7 @@
   "name": "copied-md-vscode",
   "displayName": "copied.md",
   "description": "Copy Markdown formatted for any platform",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/0xdoublesharp/copied.md.git",
@@ -57,6 +57,9 @@
           "command": "copied-md.copyTo.telegram"
         },
         {
+          "command": "copied-md.copyTo.signal"
+        },
+        {
           "command": "copied-md.copyTo.sms"
         },
         {
@@ -95,6 +98,11 @@
       {
         "command": "copied-md.copyTo.telegram",
         "title": "Telegram",
+        "category": "Copy Markdown To"
+      },
+      {
+        "command": "copied-md.copyTo.signal",
+        "title": "Signal",
         "category": "Copy Markdown To"
       },
       {

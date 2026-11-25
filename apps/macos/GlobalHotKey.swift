@@ -6,17 +6,17 @@ struct Shortcut: Codable, Equatable {
     let modifiers: UInt32
     let keyLabel: String
 
-    static func defaultShortcut(translating keyCodeForM: () -> UInt32? = keyCodeForM) -> Self {
-        Self(keyCode: keyCodeForM() ?? UInt32(kVK_ANSI_M), modifiers: UInt32(controlKey | optionKey | cmdKey), keyLabel: "M")
+    static func defaultShortcut(translating keyCodeForC: () -> UInt32? = keyCodeForC) -> Self {
+        Self(keyCode: keyCodeForC() ?? UInt32(kVK_ANSI_C), modifiers: UInt32(controlKey | cmdKey), keyLabel: "C")
     }
 
-    private static func keyCodeForM() -> UInt32? {
+    private static func keyCodeForC() -> UInt32? {
         guard let input = TISCopyCurrentKeyboardLayoutInputSource()?.takeRetainedValue(),
               let property = TISGetInputSourceProperty(input, kTISPropertyUnicodeKeyLayoutData) else { return nil }
         let layoutData = Unmanaged<CFData>.fromOpaque(property).takeUnretainedValue()
         guard let bytes = CFDataGetBytePtr(layoutData) else { return nil }
         let layout = UnsafeRawPointer(bytes).assumingMemoryBound(to: UCKeyboardLayout.self)
-        return findM { key in
+        return findC { key in
             var deadKeyState: UInt32 = 0
             var length = 0
             var characters = [UniChar](repeating: 0, count: 4)
@@ -28,8 +28,8 @@ struct Shortcut: Codable, Equatable {
         }
     }
 
-    static func findM(translating keyLabel: (UInt16) -> String?) -> UInt32? {
-        (UInt16(0)..<128).first { keyLabel($0)?.lowercased() == "m" }.map(UInt32.init)
+    static func findC(translating keyLabel: (UInt16) -> String?) -> UInt32? {
+        (UInt16(0)..<128).first { keyLabel($0)?.lowercased() == "c" }.map(UInt32.init)
     }
 
     static func record(_ event: NSEvent) -> Self? {

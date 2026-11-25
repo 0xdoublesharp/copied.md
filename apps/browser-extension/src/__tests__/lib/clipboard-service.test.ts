@@ -37,6 +37,25 @@ describe('Clipboard routing', () => {
     );
   });
 
+  it('requires the Signal data before reporting a rich Signal copy', async () => {
+    const signal = { 'text/plain': 'hello', 'text/signal': '<strong>hello</strong>' };
+    const sendMessage = vi
+      .fn()
+      .mockResolvedValueOnce({ types: ['text/plain', 'text/signal'] })
+      .mockResolvedValue({ types: ['text/plain'] });
+    vi.stubGlobal('browser', { tabs: { sendMessage } });
+    vi.stubGlobal('chrome', undefined);
+    await expect(writeToClipboard(signal, 123)).resolves.toEqual({
+      types: ['text/plain', 'text/signal'],
+      fallback: false,
+    });
+    await expect(writeToClipboard(signal, 123)).resolves.toEqual({
+      types: ['text/plain'],
+      fallback: true,
+    });
+    expect(sendMessage.mock.calls[2]?.[1].payload).toEqual({ 'text/plain': 'hello' });
+  });
+
   it('tries offscreen rich before accepting plain clipboard output', async () => {
     vi.stubGlobal('browser', {
       tabs: { sendMessage: vi.fn(async () => ({ types: ['text/plain'] })) },

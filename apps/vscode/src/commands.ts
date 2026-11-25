@@ -14,6 +14,7 @@ const namedTargets: Record<string, CopyTarget> = {
   slack: 'slack-paste',
   discord: 'discord',
   telegram: 'telegram',
+  signal: 'signal',
   sms: 'sms',
   reddit: 'reddit',
   html: 'html-source',
@@ -68,7 +69,7 @@ async function copy(target?: CopyTarget): Promise<void> {
       void vscode.window.showWarningMessage('There is no text to copy.');
       return;
     }
-    const rich = !!formats['text/html'];
+    const rich = !!(formats['text/html'] || formats['text/signal']);
     const label = targets.find((item) => item.id === target)!.label;
     const warning = result.diagnostics.find((item) => item.severity === 'warning');
     if (rich && (await writeRich(formats))) {

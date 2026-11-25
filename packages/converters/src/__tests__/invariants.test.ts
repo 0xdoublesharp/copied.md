@@ -29,6 +29,8 @@ const fragments = fc.constantFrom(
   '[Unsafe](javascript:alert%281%29)',
   '<script>ignored()</script><b>HTML</b>',
   'one  \ntwo ~~three~~',
+  'Before <span data-spoiler="true">covered</span> after.',
+  'Unclosed <span data-spoiler="true">covered',
   '👩🏽‍💻 🇺🇦 e\u0301 𝄞 漢字 & < > \\ { }',
   '---',
 );
@@ -102,6 +104,9 @@ describe('Markdown conversion properties', () => {
           for (const { id, rich } of targets) {
             const result = convertMarkdown(source, id, options);
             const plain = result.representations['text/plain'];
+            const malformedSpoiler = result.diagnostics.some(
+              ({ code, severity }) => code === 'spoiler-omitted' && severity === 'warning',
+            );
             expect(convertMarkdown(source, id, options)).toEqual(result);
             expect(result.schemaVersion).toBe(1);
             expect(result.target).toBe(id);
@@ -109,7 +114,9 @@ describe('Markdown conversion properties', () => {
             expect(Object.keys(result.representations).sort()).toEqual(
               [
                 'text/plain',
-                ...(rich ? ['text/html'] : []),
+                ...(rich && !malformedSpoiler
+                  ? [id === 'signal' ? 'text/signal' : 'text/html']
+                  : []),
                 ...(id === 'telegram' && plain ? ['text/rtf'] : []),
               ].sort(),
             );
@@ -125,7 +132,10 @@ describe('Markdown conversion properties', () => {
               });
               expect(result.metrics.limit).toBeUndefined();
             }
-            const html = id === 'html-source' ? plain : result.representations['text/html'];
+            const html =
+              id === 'html-source'
+                ? plain
+                : (result.representations['text/html'] ?? result.representations['text/signal']);
             if (html !== undefined) assertSafeHtml(html);
             const rtf = result.representations['text/rtf'];
             if (rtf !== undefined) assertValidRtfGroups(rtf);

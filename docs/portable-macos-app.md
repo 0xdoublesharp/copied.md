@@ -18,12 +18,14 @@ build/portable/copied.md.app/Contents/MacOS/copied-md --self-test
 
 ## Use the format grid
 
-![The macOS format grid with a blue border and checkmark on the last-used Telegram card.](../assets/macos-format-picker.png)
-
-Copy Markdown in another app, then press `⌃⌥⌘M`. Choose how the shortcut works in the menu bar under **Shortcut Behavior**.
+Copy Markdown in another app, then press `⌃⌘C`. Choose how the shortcut works in the menu bar under **Shortcut Behavior**.
 
 - **Copy Last Used and Show Picker** copies immediately and opens the grid. Click another card to replace the copy, press Return to dismiss it, or switch to your paste destination. This is the default.
 - **Show Picker First** waits for you to click a card or press Return to copy the highlighted format.
 - **Copy Last Used Only** copies immediately without opening the grid.
 
 Use **Copy Markdown As…** from the menu bar whenever you want to choose before copying. The gear menu saves your column count and visible formats. The app remembers a format after a successful clipboard write and uses the original Markdown if you replace an automatic copy.
+
+Choose **Signal**, then paste normally into Signal Desktop. The Signal format includes a plain-text fallback for other apps. If you customized the keyboard shortcut, **Reset to Default Shortcut** switches it to `⌃⌘C`.
+
+See the [macOS format grid in the app guide](https://www.justinsilver.com/libraries/copied-md/#macos-format-grid).
