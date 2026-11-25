@@ -1,7 +1,11 @@
 use std::{collections::BTreeMap, path::PathBuf};
 
+use copied_clipboard::Board;
 use copied_config::{ConfigPatch, ConfigV2, ShortcutCopyMode, ShortcutSpec, save_config};
-use copied_core::{CopyTarget, CopyTargetDefinition, TARGETS};
+use copied_core::{
+    ConversionOptions, CopyTarget, CopyTargetDefinition, DiagnosticSeverity, TARGETS,
+    convert_markdown,
+};
 use copied_engine::{
     CopyEngine, EngineError, Notifier, OpId, PickerOpenRequest, ShortcutController,
 };
@@ -169,6 +173,26 @@ impl<F: WindowFactory> Desktop<F> {
         Ok(())
     }
 
+    pub(crate) fn copy_sample(
+        &mut self,
+        markdown: &str,
+        target: CopyTarget,
+    ) -> Result<(), DesktopError> {
+        let conversion = convert_markdown(markdown, target, &ConversionOptions::default());
+        self.engine.board.write(&conversion.representations, None)?;
+        self.engine.notifier.mark_copied(target);
+        if let Some(warning) = conversion
+            .diagnostics
+            .iter()
+            .find(|diagnostic| diagnostic.severity == DiagnosticSeverity::Warning)
+        {
+            self.engine
+                .notifier
+                .warn("Copied with a warning", &warning.message);
+        }
+        Ok(())
+    }
+
     pub(crate) fn dismiss(&mut self, op_id: OpId) -> Result<(), DesktopError> {
         match self.engine.handle_picker_dismiss(op_id) {
             Ok(()) => self.cancel_recording_if_needed(),
@@ -186,6 +210,17 @@ impl<F: WindowFactory> Desktop<F> {
                 .notifier
                 .warn("Could not save the last-used format", &error.to_string());
         }
+    }
+
+    pub(crate) fn show_first_launch_welcome(&mut self) -> Result<(), DesktopError> {
+        if !self.engine.config.has_launched {
+            self.show_panel(Panel::Welcome)?;
+            self.update_config(ConfigPatch {
+                has_launched: Some(true),
+                ..ConfigPatch::default()
+            })?;
+        }
+        Ok(())
     }
 
     pub(crate) fn show_panel(&mut self, panel: Panel) -> Result<(), DesktopError> {

@@ -3,6 +3,8 @@ use serde::Serialize;
 use tauri::{AppHandle, Emitter, Manager, WebviewUrl, WebviewWindow, WebviewWindowBuilder};
 
 pub(crate) const WINDOW_LABEL: &str = "picker";
+const WINDOW_WIDTH: f64 = 600.0;
+const WINDOW_HEIGHT: f64 = 540.0;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "kebab-case")]
@@ -11,6 +13,7 @@ pub(crate) enum Panel {
     Settings,
     AppPin,
     Shortcut,
+    Welcome,
 }
 
 pub(crate) trait WindowFactory: Send {
@@ -112,18 +115,25 @@ impl WindowFactory for TauriWindowFactory {
     type Window = WebviewWindow;
 
     fn create(&mut self) -> tauri::Result<Self::Window> {
-        WebviewWindowBuilder::new(
+        let builder = WebviewWindowBuilder::new(
             &self.app,
             WINDOW_LABEL,
             WebviewUrl::App("index.html".into()),
         )
         .title("copied.md")
-        .inner_size(560.0, 490.0)
-        .min_inner_size(400.0, 320.0)
+        .inner_size(WINDOW_WIDTH, WINDOW_HEIGHT)
+        .always_on_top(true)
+        .resizable(false)
         .center()
         .visible(false)
-        .skip_taskbar(true)
-        .build()
+        .skip_taskbar(true);
+        #[cfg(target_os = "macos")]
+        let builder = builder
+            .title("")
+            .hidden_title(true)
+            .title_bar_style(tauri::TitleBarStyle::Overlay)
+            .visible_on_all_workspaces(true);
+        builder.build()
     }
 
     fn show(
@@ -138,10 +148,13 @@ impl WindowFactory for TauriWindowFactory {
             window.emit_to(WINDOW_LABEL, "desktop:panel", panel)?;
         }
         #[cfg(target_os = "macos")]
-        if let Some(pid) =
-            frontmost_pid().filter(|pid| Some(*pid) != i32::try_from(std::process::id()).ok())
         {
-            self.previous_app = Some(pid);
+            if let Some(pid) =
+                frontmost_pid().filter(|pid| Some(*pid) != i32::try_from(std::process::id()).ok())
+            {
+                self.previous_app = Some(pid);
+            }
+            macos_position::place(window)?;
         }
         window.show()?;
         window.set_focus()
@@ -161,6 +174,84 @@ impl WindowFactory for TauriWindowFactory {
             app.activateWithOptions(objc2_app_kit::NSApplicationActivationOptions::empty());
         }
         Ok(())
+    }
+}
+
+#[cfg(target_os = "macos")]
+mod macos_position {
+    use objc2::MainThreadMarker;
+    use objc2_app_kit::{NSEvent, NSScreen, NSWindow};
+    use objc2_core_foundation::{CGPoint, CGRect, CGSize};
+    use tauri::WebviewWindow;
+
+    use super::{WINDOW_HEIGHT, WINDOW_WIDTH};
+
+    pub(super) fn place(window: &WebviewWindow) -> tauri::Result<()> {
+        let mtm = MainThreadMarker::new().ok_or(tauri::Error::InvalidWindowHandle)?;
+        let cursor = NSEvent::mouseLocation();
+        let screen = NSScreen::screens(mtm)
+            .iter()
+            .find(|screen| contains_point(screen.frame(), cursor))
+            .or_else(|| NSScreen::mainScreen(mtm));
+        if let Some(screen) = screen {
+            let ptr = window.ns_window()?.cast::<NSWindow>();
+            // Tauri owns the NSWindow for the lifetime of this handle. AppKit access
+            // is restricted to the main thread above.
+            let native = unsafe { ptr.as_ref() }.ok_or(tauri::Error::InvalidWindowHandle)?;
+            let content = CGRect::new(CGPoint::ZERO, CGSize::new(WINDOW_WIDTH, WINDOW_HEIGHT));
+            let size = native.frameRectForContentRect(content).size;
+            native.setFrame_display(picker_frame(screen.visibleFrame(), size), false);
+        }
+        Ok(())
+    }
+
+    fn contains_point(frame: CGRect, point: CGPoint) -> bool {
+        let max = frame.max();
+        (frame.origin.x..max.x).contains(&point.x) && (frame.origin.y..max.y).contains(&point.y)
+    }
+
+    fn picker_frame(visible: CGRect, size: CGSize) -> CGRect {
+        let width = size.width.min(visible.size.width);
+        let height = size.height.min(visible.size.height);
+        let x = visible.mid().x - width / 2.0;
+        let space_below_top = visible.size.height - height;
+        let offset = (visible.size.height * 0.28).min(space_below_top);
+        // AppKit uses global points with a bottom-left origin for both rectangles.
+        let y = visible.max().y - offset - height;
+        CGRect::new(CGPoint::new(x, y), CGSize::new(width, height))
+    }
+
+    #[cfg(test)]
+    mod tests {
+        use super::*;
+
+        #[test]
+        fn picker_uses_the_cursor_screen_and_its_visible_frame() {
+            let primary = CGRect::new(CGPoint::ZERO, CGSize::new(1440.0, 900.0));
+            let secondary = CGRect::new(CGPoint::new(-1280.0, 900.0), CGSize::new(1280.0, 1024.0));
+            let cursor = CGPoint::new(-1.0, 1920.0);
+            assert!(!contains_point(primary, cursor));
+            assert!(contains_point(secondary, cursor));
+
+            let visible = CGRect::new(CGPoint::new(-1280.0, 900.0), CGSize::new(1280.0, 1000.0));
+            let size = CGSize::new(WINDOW_WIDTH, WINDOW_HEIGHT);
+            let frame = picker_frame(visible, size);
+            assert_eq!(frame.size, size);
+            assert_eq!(frame.mid().x, visible.mid().x);
+            assert!((visible.max().y - frame.max().y - 280.0).abs() < 0.001);
+        }
+
+        #[test]
+        fn picker_stays_inside_short_and_narrow_visible_frames() {
+            let size = CGSize::new(WINDOW_WIDTH, WINDOW_HEIGHT);
+            let visible = CGRect::new(CGPoint::new(1440.0, -450.0), CGSize::new(800.0, 600.0));
+            let frame = picker_frame(visible, size);
+            assert_eq!(frame.origin, CGPoint::new(1540.0, -450.0));
+            assert_eq!(frame.size, size);
+
+            let tiny = CGRect::new(visible.origin, CGSize::new(500.0, 350.0));
+            assert_eq!(picker_frame(tiny, size), tiny);
+        }
     }
 }
 

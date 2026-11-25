@@ -8,27 +8,34 @@ use std::{
 
 use tauri::AppHandle;
 
-const TOAST_DURATION: Duration = Duration::from_millis(2800);
-
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum ToastKind {
+    Success,
     Warning,
     Error,
 }
 
-/// Generation-guarded single-instance toast tracker so repeated errors update in place
-/// instead of stacking modal dialogs or letting stale timers dismiss a newer toast.
+impl ToastKind {
+    fn duration(self) -> Duration {
+        Duration::from_millis(match self {
+            Self::Success => 1400,
+            Self::Warning | Self::Error => 2800,
+        })
+    }
+}
+
+/// Replace the current toast in place and ignore stale updates and dismissals.
 #[derive(Clone, Default)]
 pub(crate) struct ToastState {
     generation: Arc<AtomicU64>,
 }
 
 impl ToastState {
-    pub(crate) fn next_generation(&self) -> u64 {
+    fn next_generation(&self) -> u64 {
         self.generation.fetch_add(1, Ordering::Relaxed) + 1
     }
 
-    pub(crate) fn should_hide(&self, expected: u64) -> bool {
+    fn is_current(&self, expected: u64) -> bool {
         self.generation.load(Ordering::Relaxed) == expected
     }
 
@@ -39,19 +46,21 @@ impl ToastState {
         let detail = detail.to_owned();
         let show_app = app.clone();
         let _ = app.run_on_main_thread(move || {
-            platform::show(&show_app, kind, &title, &detail);
-        });
-        let hide_app = app.clone();
-        tauri::async_runtime::spawn_blocking(move || {
-            std::thread::sleep(TOAST_DURATION);
-            if state.should_hide(generation) {
-                let target = hide_app.clone();
-                let _ = hide_app.run_on_main_thread(move || {
-                    if state.should_hide(generation) {
-                        platform::hide(&target);
-                    }
-                });
+            if !state.is_current(generation) {
+                return;
             }
+            platform::show(&show_app, kind, &title, &detail);
+            tauri::async_runtime::spawn_blocking(move || {
+                std::thread::sleep(kind.duration());
+                if state.is_current(generation) {
+                    let hide_app = show_app.clone();
+                    let _ = show_app.run_on_main_thread(move || {
+                        if state.is_current(generation) {
+                            platform::hide(&hide_app);
+                        }
+                    });
+                }
+            });
         });
     }
 }
@@ -90,6 +99,7 @@ mod platform {
 
     fn accent_color(kind: ToastKind) -> Retained<NSColor> {
         match kind {
+            ToastKind::Success => NSColor::colorWithSRGBRed_green_blue_alpha(0.20, 0.78, 0.35, 1.0),
             ToastKind::Error => NSColor::colorWithSRGBRed_green_blue_alpha(0.90, 0.28, 0.30, 1.0),
             ToastKind::Warning => NSColor::colorWithSRGBRed_green_blue_alpha(0.96, 0.65, 0.14, 1.0),
         }
@@ -227,14 +237,21 @@ mod tests {
     use super::*;
 
     #[test]
+    fn success_toast_dismisses_sooner_than_warning_and_error() {
+        assert_eq!(ToastKind::Success.duration(), Duration::from_millis(1400));
+        assert_eq!(ToastKind::Warning.duration(), Duration::from_millis(2800));
+        assert_eq!(ToastKind::Error.duration(), Duration::from_millis(2800));
+    }
+
+    #[test]
     fn repeated_toasts_supersede_earlier_hide_timers() {
         let state = ToastState::default();
         let first = state.next_generation();
-        assert!(state.should_hide(first));
+        assert!(state.is_current(first));
 
         let second = state.next_generation();
         assert_ne!(first, second);
-        assert!(!state.should_hide(first));
-        assert!(state.should_hide(second));
+        assert!(!state.is_current(first));
+        assert!(state.is_current(second));
     }
 }
