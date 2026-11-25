@@ -177,7 +177,8 @@ impl TrayMenu {
                     );
                 }
                 Feedback::Warning(title, detail) => {
-                    self.toast.show(app, ToastKind::Warning, &title, &detail);
+                    let (title, detail) = friendly_warning(&title, &detail);
+                    self.toast.show(app, ToastKind::Warning, title, detail);
                 }
                 Feedback::Error(error) => {
                     self.toast
@@ -209,6 +210,20 @@ impl TrayMenu {
                 }
             });
         });
+    }
+}
+
+pub(crate) fn friendly_warning<'a>(title: &'a str, detail: &'a str) -> (&'a str, &'a str) {
+    match detail {
+        "An unsupported link destination was omitted." => (
+            "Copied · non-web links kept as text",
+            "Only http, https, and mailto links are kept when pasting.",
+        ),
+        "A relative link needs an original page URL." => (
+            "Copied · relative links kept as text",
+            "Relative links have no base URL on the clipboard.",
+        ),
+        _ => (title, detail),
     }
 }
 

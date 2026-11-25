@@ -13,6 +13,7 @@ import type {
   TargetDefinition,
 } from '../lib/ipc';
 import { useMarkdownPreview } from '../lib/preview';
+import { formatDiagnostic } from '../lib/diagnostics';
 
 const props = defineProps<{
   request: PickerOpenRequest;
@@ -35,6 +36,7 @@ const grid = ref<HTMLElement>();
 const filterInput = ref<HTMLInputElement>();
 const query = ref('');
 const selected = ref<CopyTarget>();
+const hovered = ref<CopyTarget>();
 const copied = computed(() => props.request.copied);
 const aliases: Partial<Record<CopyTarget, string[]>> = {
   sms: ['msg', 'imessage'],
@@ -54,6 +56,10 @@ const selectedIndex = computed(() =>
   filteredTargets.value.findIndex((target) => target.id === selected.value),
 );
 const selectedTarget = computed(() => filteredTargets.value[selectedIndex.value]);
+const previewTarget = computed(
+  () =>
+    filteredTargets.value.find((target) => target.id === hovered.value) ?? selectedTarget.value,
+);
 const isDone = computed(() => copied.value != null && selected.value === copied.value.target);
 
 // The picker supplies a suggestion for resolved app formats. When it already copied the
@@ -109,9 +115,22 @@ try {
 const { result: preview, failed: previewFailed } = useMarkdownPreview(
   props.api,
   () => props.request.sourcePreview,
-  () => selectedTarget.value?.id,
+  () => previewTarget.value?.id,
   () => props.request.opId,
 );
+const copiedNotice = computed(() => {
+  if (!copied.value?.warning) return null;
+  const formatted = formatDiagnostic(copied.value.warning);
+  const shownInPreview =
+    props.request.sourcePreview != null &&
+    previewExpanded.value &&
+    preview.value?.diagnostics.some(
+      (diagnostic) =>
+        diagnostic.severity === 'warning' &&
+        formatDiagnostic(diagnostic.message, diagnostic.code).label === formatted.label,
+    );
+  return shownInPreview ? null : formatted;
+});
 
 function togglePreview() {
   previewExpanded.value = !previewExpanded.value;
@@ -131,6 +150,7 @@ function focusSelection() {
 
 function resetFilter() {
   query.value = '';
+  hovered.value = undefined;
   selected.value =
     props.targets.find((target) => target.id === props.request.selected)?.id ??
     props.targets[0]?.id;
@@ -216,7 +236,17 @@ function handleKey(event: KeyboardEvent) {
     <header class="panel-heading picker-heading">
       <div class="picker-title">
         <h1>Copy Markdown As</h1>
-        <p v-if="copied">Copied as {{ copied.label }}</p>
+        <p v-if="copied || copiedNotice" class="picker-subtitle">
+          <span v-if="copied">Copied as {{ copied.label }}</span>
+          <span
+            v-if="copiedNotice"
+            class="picker-note"
+            role="status"
+            :title="copiedNotice.tooltip"
+          >
+            {{ copied ? '· ' : '' }}{{ copiedNotice.label }}
+          </span>
+        </p>
       </div>
       <span v-if="appContext" class="app-context" :title="appContext">{{ appContext }}</span>
       <button
@@ -261,10 +291,6 @@ function handleKey(event: KeyboardEvent) {
       <span class="filter-hint" aria-hidden="true">Type anywhere <kbd>⌘K</kbd></span>
     </div>
 
-    <p v-if="copied?.warning" class="warning" role="status" :title="copied.warning">
-      {{ copied.warning }}
-    </p>
-
     <div
       v-if="filteredTargets.length"
       ref="grid"
@@ -274,6 +300,7 @@ function handleKey(event: KeyboardEvent) {
       :style="{ '--columns': columns }"
       :data-columns="columns"
       tabindex="-1"
+      @mouseleave="hovered = undefined"
     >
       <button
         v-for="(target, index) in filteredTargets"
@@ -288,7 +315,11 @@ function handleKey(event: KeyboardEvent) {
         :disabled="busy"
         :data-target="target.id"
         :style="{ '--format-accent': formatIcons[target.id].accent }"
-        @focus="selected = target.id"
+        @mouseenter="hovered = target.id"
+        @focus="
+          selected = target.id;
+          hovered = undefined;
+        "
         @click="chooseCard(target.id)"
       >
         <span class="format-icon">
@@ -318,29 +349,32 @@ function handleKey(event: KeyboardEvent) {
     </div>
     <p v-else class="empty-formats" role="status">No matching formats — press Esc to clear</p>
 
-    <div v-if="request.sourcePreview != null && selectedTarget" class="picker-preview">
-      <button
-        type="button"
-        class="preview-toggle"
-        :aria-expanded="previewExpanded"
-        aria-controls="picker-preview-output"
-        @click="togglePreview"
-      >
-        <svg viewBox="0 0 16 16" width="13" height="13" fill="none" aria-hidden="true">
-          <path
-            d="m6 3.5 4 4.5-4 4.5"
-            stroke="currentColor"
-            stroke-width="1.6"
-            stroke-linecap="round"
-            stroke-linejoin="round"
-          />
-        </svg>
-        Preview
-      </button>
+    <div v-if="request.sourcePreview != null && previewTarget" class="picker-preview">
+      <div class="preview-header">
+        <button
+          type="button"
+          class="preview-toggle"
+          :aria-expanded="previewExpanded"
+          aria-controls="picker-preview-output"
+          @click="togglePreview"
+        >
+          <svg viewBox="0 0 16 16" width="13" height="13" fill="none" aria-hidden="true">
+            <path
+              d="m6 3.5 4 4.5-4 4.5"
+              stroke="currentColor"
+              stroke-width="1.6"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            />
+          </svg>
+          Preview
+        </button>
+        <span class="preview-hint" aria-hidden="true">Hover to preview · Click to copy</span>
+      </div>
       <PreviewOutput
         v-show="previewExpanded"
         id="picker-preview-output"
-        :label="selectedTarget.label"
+        :label="previewTarget.label"
         :result="preview"
         :failed="previewFailed"
       />

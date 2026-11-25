@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue';
 import type { CopyTarget, MarkdownConversion } from '../lib/ipc';
+import { formatDiagnostic } from '../lib/diagnostics';
 
 const props = defineProps<{
   label: string;
@@ -17,7 +18,9 @@ const markupTargets = new Set<CopyTarget>([
   'twitter',
 ]);
 const warnings = computed(() =>
-  props.result?.diagnostics.filter((diagnostic) => diagnostic.severity === 'warning'),
+  props.result?.diagnostics
+    .filter((diagnostic) => diagnostic.severity === 'warning')
+    .map((diagnostic) => formatDiagnostic(diagnostic.message, diagnostic.code)),
 );
 const characterCount = computed(() => {
   const metrics = props.result?.metrics;
@@ -43,10 +46,14 @@ const overLimit = computed(() => {
         <span
           v-for="(warning, index) in warnings"
           :key="index"
-          class="preview-warning"
-          :title="warning.message"
+          class="preview-note"
+          :title="warning.tooltip"
         >
-          {{ warning.message }}
+          <svg viewBox="0 0 16 16" width="11" height="11" fill="none" aria-hidden="true">
+            <circle cx="8" cy="8" r="6.25" stroke="currentColor" stroke-width="1.4" />
+            <path d="M8 7.2v3.6M8 5.2h.01" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
+          </svg>
+          <span class="preview-note-text">{{ warning.label }}</span>
         </span>
       </template>
     </div>

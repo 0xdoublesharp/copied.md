@@ -241,7 +241,7 @@ describe('format picker', () => {
     expect(calls.at(-1)).toEqual(['picker_choose', { opId: 2, target: 'discord' }]);
   });
 
-  it('shows the full warning in a tooltip and Enter confirms an automatic copy', async () => {
+  it('shows the full warning in a calm subtitle note and Enter confirms an automatic copy', async () => {
     const state = fixture();
     state.currentPicker!.copied = {
       target: 'rich-text',
@@ -249,13 +249,56 @@ describe('format picker', () => {
       warning: 'Some formatting was omitted.',
     };
     const { root, calls } = await mount(state);
-    expect(root.querySelector('.warning')?.getAttribute('title')).toBe(
+    expect(root.querySelector('.picker-note')?.getAttribute('title')).toBe(
       'Some formatting was omitted.',
     );
     expect(button(root, 'Rich Text, copied').querySelector('.card-check')).not.toBeNull();
     expect(button(root, 'Done')).toBeDefined();
     await key('Enter');
     expect(calls.at(-1)).toEqual(['picker_choose', { opId: 1, target: null }]);
+  });
+
+  it('humanizes non-web link notes, deduplicates them with preview, and updates preview on hover', async () => {
+    const state = fixture();
+    state.currentPicker!.sourcePreview = '[local](file:///tmp/a.md)';
+    state.currentPicker!.copied = {
+      target: 'rich-text',
+      label: 'Rich Text',
+      warning: 'An unsupported link destination was omitted.',
+    };
+    const { root } = await mount(state, async (args) =>
+      conversion(
+        args?.target as CopyTarget,
+        args?.target === 'slack-paste' ? 'Slack preview' : 'Rich preview',
+        {},
+        [
+          {
+            code: 'unsupported-url',
+            severity: 'warning',
+            message: 'An unsupported link destination was omitted.',
+          },
+        ],
+      ),
+    );
+    await vi.waitFor(() =>
+      expect(root.querySelector('.preview-text')?.textContent).toBe('Rich preview'),
+    );
+    expect(root.querySelector('.picker-note')).toBeNull();
+    expect(root.querySelector('.preview-note')?.textContent).toContain(
+      'Non-web links kept as text',
+    );
+    expect(root.querySelector('.preview-note')?.getAttribute('title')).toContain('file://');
+
+    button(root, 'Slack').dispatchEvent(new MouseEvent('mouseenter', { bubbles: false }));
+    await vi.waitFor(() =>
+      expect(root.querySelector('.preview-text')?.textContent).toBe('Slack preview'),
+    );
+    expect(root.querySelector('.preview-label')?.textContent).toBe('Slack');
+
+    root.querySelector('.format-grid')!.dispatchEvent(new MouseEvent('mouseleave'));
+    await vi.waitFor(() =>
+      expect(root.querySelector('.preview-text')?.textContent).toBe('Rich preview'),
+    );
   });
 
   it('numbers the first nine displayed formats and immediately copies the corresponding card', async () => {

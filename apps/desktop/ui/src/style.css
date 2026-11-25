@@ -160,6 +160,11 @@ kbd {
   white-space: nowrap;
 }
 
+.picker-note {
+  color: var(--muted);
+  cursor: help;
+}
+
 .app-context {
   flex-shrink: 1;
   min-width: 0;
@@ -367,11 +372,18 @@ select {
   background: var(--inset);
 }
 
+.preview-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding-inline-end: 9px;
+}
+
 .preview-toggle {
   display: flex;
   align-items: center;
   gap: 5px;
-  width: 100%;
   min-height: 26px;
   padding: 3px 8px;
   border-radius: 7px;
@@ -392,6 +404,14 @@ select {
 
 .preview-toggle[aria-expanded='true'] svg {
   transform: rotate(90deg);
+}
+
+.preview-hint {
+  color: var(--muted);
+  font-size: 10.5px;
+  font-weight: 450;
+  opacity: 0.78;
+  white-space: nowrap;
 }
 
 .preview-output {
@@ -415,8 +435,8 @@ select {
 }
 
 .metric,
-.preview-warning {
-  padding: 1px 5px;
+.preview-note {
+  padding: 1px 6px;
   border-radius: 4px;
   background: var(--card);
   color: var(--muted);
@@ -425,13 +445,27 @@ select {
   white-space: nowrap;
 }
 
-.preview-warning {
+.preview-note {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  border: 1px solid var(--line);
+  background: color-mix(in srgb, var(--card), var(--inset) 45%);
+  cursor: help;
+}
+
+.preview-note svg {
+  flex: none;
+  opacity: 0.75;
+}
+
+.preview-note-text {
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
 .metric.over-limit,
-.preview-warning,
 .warning {
   background: var(--warning-surface);
   color: var(--warning-ink);
