@@ -1,0 +1,20 @@
+[package]
+name = "copied-engine"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+copied-clipboard.workspace = true
+copied-config.workspace = true
+copied-core.workspace = true
+copied-platform.workspace = true
+serde.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+proptest.workspace = true

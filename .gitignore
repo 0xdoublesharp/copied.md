@@ -15,3 +15,8 @@ coverage/
 .claude/
 .codex/
 .t3/
+target/
+formal/lean/.lake/
+fuzz/target/
+fuzz/corpus/
+fuzz/artifacts/

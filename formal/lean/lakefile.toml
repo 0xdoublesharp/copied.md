@@ -1,0 +1,10 @@
+name = "copied-formal"
+version = "0.1.0"
+defaultTargets = ["CopiedFormal", "vectors"]
+
+[[lean_lib]]
+name = "CopiedFormal"
+
+[[lean_exe]]
+name = "vectors"
+root = "Vectors"

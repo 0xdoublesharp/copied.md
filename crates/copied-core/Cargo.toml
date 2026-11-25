@@ -1,0 +1,24 @@
+[package]
+name = "copied-core"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+copied-codec.workspace = true
+html5ever.workspace = true
+indexmap.workspace = true
+markdown.workspace = true
+markup5ever_rcdom.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+unicode-normalization.workspace = true
+url.workspace = true
+
+[dev-dependencies]
+proptest.workspace = true
