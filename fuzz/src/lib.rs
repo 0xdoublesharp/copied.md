@@ -30,9 +30,9 @@ fn element_children(handle: &Handle, out: &mut Vec<Handle>) {
 /// URL schemes are checked on parsed `href`/`src` values, so text that merely mentions
 /// `javascript:` is allowed.
 pub fn assert_safe_html(html: &str) {
+    // `<script` or `<iframe` may legitimately appear inside a quoted attribute value, so
+    // active elements are checked on the parsed DOM below instead of by substring.
     let lower = html.to_ascii_lowercase();
-    assert!(!lower.contains("<script"), "raw <script in {html:?}");
-    assert!(!lower.contains("<iframe"), "raw <iframe in {html:?}");
 
     // `/<\/?a(?=[\s>])[^>]*>/gi`
     let mut depth: i32 = 0;

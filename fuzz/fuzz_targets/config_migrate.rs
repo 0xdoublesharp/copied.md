@@ -181,6 +181,16 @@ fn is_visible(config: &ConfigV2, target: CopyTarget) -> bool {
         .any(|def| def.id == target)
 }
 
+/// A pin is honored only when the map (or the target's default) makes it visible. Unlike
+/// `visible_formats`, this has no RichText fallback when every format is hidden.
+fn pin_visible(config: &ConfigV2, pin: CopyTarget) -> bool {
+    config
+        .format_visibility
+        .get(&pin)
+        .copied()
+        .unwrap_or(pin.definition().enabled_by_default != Some(false))
+}
+
 /// Selection invariants that hold for any config, normalized or not.
 fn check_selection(config: &ConfigV2, app_ids: &[Option<String>]) {
     let visible = visible_formats(&config.format_visibility);
@@ -213,7 +223,7 @@ fn check_selection(config: &ConfigV2, app_ids: &[Option<String>]) {
         if let Some(&pin) = pin {
             assert_eq!(
                 resolved.from_pin,
-                is_visible(config, pin),
+                pin_visible(config, pin),
                 "pin {pin} in {config:?}"
             );
         }

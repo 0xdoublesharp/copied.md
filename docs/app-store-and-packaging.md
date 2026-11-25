@@ -49,6 +49,8 @@ xcrun altool --upload-app --type macos --file copied.md.pkg \
   --apiKey <KEY_ID> --apiIssuer <ISSUER_ID>
 ```
 
+Tauri's guide also asks for `ITSAppUsesNonExemptEncryption` in the app's `Info.plist`, and `src-tauri/Info.plist` does not set it yet. Set it to `false` as long as the app uses no encryption beyond what macOS provides.
+
 Before submitting, check the sandbox and entitlements on the signed app:
 
 ```sh
@@ -92,12 +94,27 @@ pnpm --dir ui tauri build --bundles nsis
 Get-AuthenticodeSignature "src-tauri\target\release\bundle\nsis\*.exe"
 ```
 
-For the Microsoft Store, submit the signed NSIS installer as an unpackaged Win32 app in Partner Center:
+For the Microsoft Store, submit a signed offline installer as an unpackaged Win32 app in Partner Center. The Store requires the offline WebView2 install mode, which the default config does not use. Add a Store-only config, `src-tauri/tauri.microsoftstore.conf.json`, that sets the install mode and a `bundle.publisher` different from `productName` (`copied.md`):
 
-1. Reserve the app name in Partner Center.
+```json
+{
+  "bundle": {
+    "publisher": "<Publisher Name>",
+    "windows": { "webviewInstallMode": { "type": "offlineInstaller" } }
+  }
+}
+```
+
+```powershell
+pnpm --dir ui tauri build --bundles nsis --config src-tauri/tauri.microsoftstore.conf.json
+```
+
+1. Enroll as a Microsoft developer and reserve the app name in Partner Center as an **EXE or MSI app**.
 2. Host the signed installer at a stable HTTPS URL that serves a versioned file.
-3. Create a submission of type **EXE or MSI app**, give the installer URL, and set silent install arguments (`/S` for NSIS).
+3. Give the installer URL and the silent install argument: `/S` for NSIS, or `/quiet` for MSI.
 4. Describe the clipboard access and global shortcut in the certification notes.
+
+[Tauri Microsoft Store distribution](https://v2.tauri.app/distribute/microsoft-store/)
 
 An MSIX package is not configured.
 
