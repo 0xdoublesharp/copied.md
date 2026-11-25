@@ -46,81 +46,48 @@ pub trait Board: Send {
     ) -> Result<WrittenClipboard, WriteError>;
 }
 
-/// Deterministic in-memory [`Board`] for unit tests, property tests, and state-machine verification.
-#[derive(Debug, Default, Clone)]
-pub struct FakeBoard {
-    revision: u64,
-    payload: Option<ClipboardPayload>,
+mod bundle;
+mod fake;
+#[cfg(target_os = "linux")]
+pub mod linux;
+#[cfg(target_os = "macos")]
+pub mod macos;
+#[cfg(target_os = "windows")]
+pub mod windows;
+
+pub use fake::FakeBoard;
+
+/// Opens the clipboard for the current desktop session.
+pub fn system_board() -> Result<Box<dyn Board>, WriteError> {
+    #[cfg(target_os = "macos")]
+    return Ok(Box::new(macos::MacPasteboard::general()));
+    #[cfg(target_os = "windows")]
+    return Ok(Box::new(windows::WinClipboard));
+    #[cfg(target_os = "linux")]
+    return Ok(Box::new(linux::LinuxClipboard::connect()?));
+    #[cfg(not(any(target_os = "macos", target_os = "windows", target_os = "linux")))]
+    Err(WriteError::Unavailable(
+        "no system clipboard backend".into(),
+    ))
 }
 
-impl FakeBoard {
-    pub fn with_text(text: impl Into<String>) -> Self {
-        Self {
-            revision: 0,
-            payload: Some(ClipboardPayload {
-                plain: text.into(),
-                ..ClipboardPayload::default()
-            }),
-        }
+fn require_revision(expected: Option<Revision>, actual: Revision) -> Result<(), WriteError> {
+    if expected.is_some_and(|revision| revision != actual) {
+        return Err(WriteError::Stale);
     }
-
-    pub fn external_copy(&mut self, text: impl Into<String>) -> Revision {
-        self.revision += 1;
-        self.payload = Some(ClipboardPayload {
-            plain: text.into(),
-            ..ClipboardPayload::default()
-        });
-        Revision(self.revision)
-    }
-
-    pub fn current_payload(&self) -> Option<&ClipboardPayload> {
-        self.payload.as_ref()
-    }
+    Ok(())
 }
 
-impl Board for FakeBoard {
-    fn revision(&self) -> Result<Revision, WriteError> {
-        Ok(Revision(self.revision))
-    }
-
-    fn read_text(&self) -> Result<ClipboardSnapshot, WriteError> {
-        let Some(payload) = &self.payload else {
-            return Err(WriteError::Empty);
-        };
-        Ok(ClipboardSnapshot {
-            text: payload.plain.clone(),
-            revision: Revision(self.revision),
-        })
-    }
-
-    fn write(
-        &mut self,
-        payload: &ClipboardPayload,
-        expected: Option<Revision>,
-    ) -> Result<WrittenClipboard, WriteError> {
-        if payload.plain.trim().is_empty() {
-            return Err(WriteError::Empty);
-        }
-        if let Some(exp) = expected
-            && exp != Revision(self.revision)
-        {
-            return Err(WriteError::Stale);
-        }
-        let mut types = vec![String::from("text/plain")];
-        if payload.html.as_deref().is_some_and(|s| !s.is_empty()) {
-            types.push(String::from("text/html"));
-        }
-        if payload.rtf.as_deref().is_some_and(|s| !s.is_empty()) {
-            types.push(String::from("text/rtf"));
-        }
-        if payload.signal.as_deref().is_some_and(|s| !s.is_empty()) {
-            types.push(String::from("text/signal"));
-        }
-        self.revision += 1;
-        self.payload = Some(payload.clone());
-        Ok(WrittenClipboard {
-            types,
-            revision: Revision(self.revision),
-        })
-    }
+#[cfg(any(test, target_os = "macos", target_os = "windows"))]
+fn stable_snapshot(
+    revision: impl Fn() -> Result<Revision, WriteError>,
+    read: impl FnOnce() -> Result<Option<String>, WriteError>,
+) -> Result<ClipboardSnapshot, WriteError> {
+    let initial = revision()?;
+    let text = read();
+    require_revision(Some(initial), revision()?)?;
+    Ok(ClipboardSnapshot {
+        text: text?.ok_or(WriteError::Empty)?,
+        revision: initial,
+    })
 }

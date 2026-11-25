@@ -70,3 +70,30 @@ pub trait LoginItemBackend: Send {
     fn status(&self) -> LoginItemStatus;
     fn set_enabled(&mut self, enabled: bool) -> Result<LoginItemStatus, PlatformError>;
 }
+
+mod fake;
+#[cfg(target_os = "linux")]
+pub mod linux;
+#[cfg(target_os = "macos")]
+pub mod macos;
+#[cfg(target_os = "windows")]
+pub mod windows;
+
+pub use fake::{FakeActiveAppProvider, FakeLoginItemBackend, FakeShortcutBackend};
+
+/// Inspects the desktop mechanisms available in the current process and session.
+pub fn detect_capabilities() -> PlatformCapabilities {
+    #[cfg(target_os = "macos")]
+    return macos::capabilities();
+    #[cfg(target_os = "windows")]
+    return windows::capabilities();
+    #[cfg(target_os = "linux")]
+    return linux::capabilities();
+    #[cfg(not(any(target_os = "macos", target_os = "windows", target_os = "linux")))]
+    PlatformCapabilities {
+        background_clipboard: false,
+        global_shortcuts: ShortcutCapability::Unsupported,
+        active_app_detection: false,
+        launch_at_login: false,
+    }
+}
