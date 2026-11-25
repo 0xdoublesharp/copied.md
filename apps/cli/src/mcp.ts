@@ -11,7 +11,7 @@ const annotations = {
 };
 
 export async function serveMcp() {
-  const server = new McpServer({ name: 'copied-md', version: '1.2.0' });
+  const server = new McpServer({ name: 'copied-md', version: '2.0.0' });
   server.registerTool(
     'list_copy_targets',
     {

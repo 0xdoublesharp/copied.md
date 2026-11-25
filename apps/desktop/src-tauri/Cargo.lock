@@ -380,7 +380,7 @@ dependencies = [
 
 [[package]]
 name = "copied-clipboard"
-version = "2.0.0-alpha.1"
+version = "2.0.0"
 dependencies = [
  "copied-codec",
  "copied-core",
@@ -399,11 +399,11 @@ dependencies = [
 
 [[package]]
 name = "copied-codec"
-version = "2.0.0-alpha.1"
+version = "2.0.0"
 
 [[package]]
 name = "copied-config"
-version = "2.0.0-alpha.1"
+version = "2.0.0"
 dependencies = [
  "copied-core",
  "directories",
@@ -415,7 +415,7 @@ dependencies = [
 
 [[package]]
 name = "copied-core"
-version = "2.0.0-alpha.1"
+version = "2.0.0"
 dependencies = [
  "copied-codec",
  "html5ever 0.27.0",
@@ -431,7 +431,7 @@ dependencies = [
 
 [[package]]
 name = "copied-engine"
-version = "2.0.0-alpha.1"
+version = "2.0.0"
 dependencies = [
  "copied-clipboard",
  "copied-config",
@@ -443,7 +443,7 @@ dependencies = [
 
 [[package]]
 name = "copied-md-desktop"
-version = "2.0.0-alpha.1"
+version = "2.0.0"
 dependencies = [
  "copied-clipboard",
  "copied-config",
@@ -466,7 +466,7 @@ dependencies = [
 
 [[package]]
 name = "copied-platform"
-version = "2.0.0-alpha.1"
+version = "2.0.0"
 dependencies = [
  "copied-clipboard",
  "copied-config",

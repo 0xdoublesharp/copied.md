@@ -37,11 +37,11 @@ checksum = "4e7648175b45a9a48536d676f68d918270699102aa8dab5496df06904c914600"
 
 [[package]]
 name = "copied-codec"
-version = "2.0.0-alpha.1"
+version = "2.0.0"
 
 [[package]]
 name = "copied-config"
-version = "2.0.0-alpha.1"
+version = "2.0.0"
 dependencies = [
  "copied-core",
  "directories",
@@ -53,7 +53,7 @@ dependencies = [
 
 [[package]]
 name = "copied-core"
-version = "2.0.0-alpha.1"
+version = "2.0.0"
 dependencies = [
  "copied-codec",
  "html5ever",

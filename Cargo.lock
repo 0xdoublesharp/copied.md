@@ -209,7 +209,7 @@ checksum = "1d07550c9036bf2ae0c684c4297d503f838287c83c53686d05370d0e139ae570"
 
 [[package]]
 name = "copied-cli"
-version = "2.0.0-alpha.1"
+version = "2.0.0"
 dependencies = [
  "clap",
  "copied-clipboard",
@@ -225,7 +225,7 @@ dependencies = [
 
 [[package]]
 name = "copied-clipboard"
-version = "2.0.0-alpha.1"
+version = "2.0.0"
 dependencies = [
  "copied-codec",
  "copied-core",
@@ -246,7 +246,7 @@ dependencies = [
 
 [[package]]
 name = "copied-codec"
-version = "2.0.0-alpha.1"
+version = "2.0.0"
 dependencies = [
  "proptest",
  "serde",
@@ -255,7 +255,7 @@ dependencies = [
 
 [[package]]
 name = "copied-config"
-version = "2.0.0-alpha.1"
+version = "2.0.0"
 dependencies = [
  "copied-core",
  "directories",
@@ -268,7 +268,7 @@ dependencies = [
 
 [[package]]
 name = "copied-core"
-version = "2.0.0-alpha.1"
+version = "2.0.0"
 dependencies = [
  "copied-codec",
  "html5ever",
@@ -285,7 +285,7 @@ dependencies = [
 
 [[package]]
 name = "copied-engine"
-version = "2.0.0-alpha.1"
+version = "2.0.0"
 dependencies = [
  "copied-clipboard",
  "copied-config",
@@ -299,7 +299,7 @@ dependencies = [
 
 [[package]]
 name = "copied-platform"
-version = "2.0.0-alpha.1"
+version = "2.0.0"
 dependencies = [
  "copied-clipboard",
  "copied-config",
@@ -317,7 +317,7 @@ dependencies = [
 
 [[package]]
 name = "copied-wasm"
-version = "2.0.0-alpha.1"
+version = "2.0.0"
 dependencies = [
  "copied-core",
  "serde",
