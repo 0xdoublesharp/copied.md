@@ -21,6 +21,7 @@ copied-codec = { path = "../crates/copied-codec" }
 copied-core = { path = "../crates/copied-core" }
 copied-config = { path = "../crates/copied-config" }
 html5ever = "0.27"
+markdown = "1"
 markup5ever_rcdom = "0.3"
 serde_json = "1"
 url = "2"

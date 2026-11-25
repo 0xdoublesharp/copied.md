@@ -269,3 +269,25 @@ pub fn assert_not_in_code(value: &str, what: &str) {
         );
     }
 }
+
+/// Asserts [`TOKEN`] never appears inside a parsed Reddit Markdown code block
+/// (indented or fenced).
+pub fn assert_reddit_code_has_no_spoilers(value: &str) {
+    fn walk(node: &markdown::mdast::Node) {
+        if let markdown::mdast::Node::Code(code) = node {
+            assert!(
+                !code.value.contains(TOKEN),
+                "spoiler text shown inside a Reddit code block: {:?}",
+                code.value
+            );
+        }
+        if let Some(children) = node.children() {
+            for child in children {
+                walk(child);
+            }
+        }
+    }
+    let parsed =
+        markdown::to_mdast(value, &markdown::ParseOptions::gfm()).expect("Reddit Markdown parses");
+    walk(&parsed);
+}

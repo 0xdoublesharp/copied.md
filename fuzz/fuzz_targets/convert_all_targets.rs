@@ -9,11 +9,12 @@
 use arbitrary::Arbitrary;
 use copied_core::{
     ConversionOptions, CopyTarget, DiagnosticCode, DiagnosticSeverity, MetricUnit, TARGETS,
-    convert_markdown,
+    convert_markdown, oracle::convert_markdown_ts_v1,
 };
 use copied_fuzz::{
-    SAFE_FRAGMENTS, assert_hidden, assert_not_in_code, assert_safe_html, assert_valid_rtf_groups,
-    from_alphabet, paired_regions, signal_regions, spoiler_contexts,
+    SAFE_FRAGMENTS, assert_hidden, assert_not_in_code, assert_reddit_code_has_no_spoilers,
+    assert_safe_html, assert_valid_rtf_groups, from_alphabet, paired_regions, signal_regions,
+    spoiler_contexts,
 };
 use libfuzzer_sys::fuzz_target;
 
@@ -138,11 +139,7 @@ fn check_payload_contract(source: &str, options: &ConversionOptions) {
             rich && id == CopyTarget::Signal,
             "{id} text/signal"
         );
-        assert_eq!(
-            reps.rtf.is_some(),
-            id == CopyTarget::Telegram && !reps.plain.is_empty(),
-            "{id} text/rtf"
-        );
+        assert!(reps.rtf.is_none(), "{id} text/rtf");
 
         if id == CopyTarget::Twitter {
             assert_eq!(result.metrics.unit, MetricUnit::XWeightedCharacters);
@@ -170,8 +167,16 @@ fn check_payload_contract(source: &str, options: &ConversionOptions) {
         if let Some(html) = html {
             assert_safe_html(html);
         }
-        if let Some(rtf) = &reps.rtf {
-            assert_valid_rtf_groups(rtf);
+        if id == CopyTarget::Telegram {
+            let legacy = convert_markdown_ts_v1(source, id, options).representations;
+            assert_eq!(
+                legacy.rtf.is_some(),
+                !legacy.plain.is_empty(),
+                "{id} oracle text/rtf"
+            );
+            if let Some(rtf) = &legacy.rtf {
+                assert_valid_rtf_groups(rtf);
+            }
         }
         if matches!(
             id,
@@ -235,10 +240,12 @@ fn check_spoilers_fail_closed(input: &Input, options: &ConversionOptions) {
     }
 
     let telegram = convert_markdown(&source, CopyTarget::Telegram, &options).representations;
-    assert_hidden(&telegram.plain, &[], "telegram text/plain");
-    if let Some(rtf) = &telegram.rtf {
-        assert_hidden(rtf, &[], "telegram text/rtf");
-    }
+    assert_hidden(
+        &telegram.plain,
+        &paired_regions(&telegram.plain, "||", "||"),
+        "telegram text/plain",
+    );
+    assert_not_in_code(&telegram.plain, "telegram text/plain");
     let html = telegram.html.as_deref().unwrap_or_default();
     assert_hidden(
         html,
@@ -256,7 +263,7 @@ fn check_spoilers_fail_closed(input: &Input, options: &ConversionOptions) {
         .representations
         .plain;
     assert_hidden(&reddit, &paired_regions(&reddit, ">!", "!<"), "reddit");
-    assert_not_in_code(&reddit, "reddit");
+    assert_reddit_code_has_no_spoilers(&reddit);
 }
 
 fuzz_target!(|input: Input| {
