@@ -1,12 +1,14 @@
 import { createApp, type App as VueApp } from 'vue';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { formatIcons } from '@0xdoublesharp/copied-md-shared-icons';
 import App from '../App.vue';
 import {
   createDesktopApi,
   type ConfigPatch,
+  type CopyTarget,
   type DesktopBridge,
   type DesktopState,
+  type MarkdownConversion,
   type PickerOpenRequest,
   type ShortcutSpec,
 } from '../lib/ipc';
@@ -63,13 +65,18 @@ const apps: VueApp[] = [];
 afterEach(() => {
   for (const app of apps.splice(0)) app.unmount();
   document.body.replaceChildren();
+  window.localStorage.clear();
 });
 
 async function settle() {
   await new Promise<void>((resolve) => setTimeout(resolve, 0));
 }
 
-async function mount(state = fixture()) {
+async function mount(
+  state = fixture(),
+  preview = async (args: Record<string, unknown> | undefined): Promise<MarkdownConversion> =>
+    conversion(args?.target as CopyTarget, 'Converted text'),
+) {
   const calls: [string, Record<string, unknown> | undefined][] = [];
   const events = new Map<string, (payload: never) => void>();
   let rejectCommit = false;
@@ -80,6 +87,9 @@ async function mount(state = fixture()) {
       switch (command) {
         case 'get_desktop_state':
           response = structuredClone(state);
+          break;
+        case 'preview_markdown':
+          response = await preview(args);
           break;
         case 'update_config': {
           const { formatVisibility, ...patch } = args?.patch as ConfigPatch;
@@ -141,6 +151,21 @@ async function mount(state = fixture()) {
   };
 }
 
+function conversion(
+  target: CopyTarget,
+  text: string,
+  metrics: Partial<MarkdownConversion['metrics']> = {},
+  diagnostics: MarkdownConversion['diagnostics'] = [],
+): MarkdownConversion {
+  return {
+    schemaVersion: 1,
+    target,
+    representations: { 'text/plain': text },
+    metrics: { sourceCodeUnits: 12, outputLength: text.length, unit: 'code-points', ...metrics },
+    diagnostics,
+  };
+}
+
 function button(root: HTMLElement, label: string): HTMLButtonElement {
   const result = [...root.querySelectorAll('button')].find(
     (element) =>
@@ -162,6 +187,14 @@ async function key(key: string, options: KeyboardEventInit = {}) {
   document.activeElement?.dispatchEvent(
     new KeyboardEvent('keydown', { bubbles: true, cancelable: true, key, ...options }),
   );
+  await settle();
+}
+
+async function filter(root: HTMLElement, value: string) {
+  const input = root.querySelector<HTMLInputElement>('input[aria-label="Filter formats"]')!;
+  input.focus();
+  input.value = value;
+  input.dispatchEvent(new Event('input', { bubbles: true }));
   await settle();
 }
 
@@ -224,9 +257,241 @@ describe('format picker', () => {
     await key('Enter');
     expect(calls.at(-1)).toEqual(['picker_choose', { opId: 1, target: null }]);
   });
+
+  it('numbers the first nine displayed formats and immediately copies the corresponding card', async () => {
+    const state = fixture();
+    state.targets = [
+      ...targets,
+      { id: 'sms', label: 'Messages', rich: false },
+      { id: 'whatsapp', label: 'WhatsApp', rich: false },
+      { id: 'signal', label: 'Signal', rich: true },
+      { id: 'reddit', label: 'Reddit', rich: false },
+    ];
+    const { root, calls } = await mount(state);
+    const cards = [...root.querySelectorAll<HTMLElement>('[data-target]')];
+    expect(cards.map((card) => card.querySelector('kbd')?.textContent)).toEqual([
+      '1',
+      '2',
+      '3',
+      '4',
+      '5',
+      '6',
+      '7',
+      '8',
+      '9',
+      undefined,
+    ]);
+    for (const [index, card] of cards.slice(0, 9).entries()) {
+      await key(String(index + 1));
+      expect(calls.at(-1)).toEqual(['picker_choose', { opId: 1, target: card.dataset.target }]);
+    }
+  });
+
+  it('focuses and seeds the filter from a card, then copies the filtered selection with Enter', async () => {
+    const { root, calls } = await mount();
+    await key('S', { shiftKey: true });
+    const input = root.querySelector<HTMLInputElement>('input[aria-label="Filter formats"]')!;
+    expect(document.activeElement).toBe(input);
+    expect(input.value).toBe('S');
+    await key('ArrowDown');
+    expect(document.activeElement).toBe(button(root, 'HTML Source'));
+    await key('L', { shiftKey: true });
+    expect(document.activeElement).toBe(input);
+    expect(input.value).toBe('SL');
+    expect(root.querySelectorAll('[data-target]')).toHaveLength(1);
+    expect(button(root, 'Slack').querySelector('kbd')?.textContent).toBe('1');
+    await key('Enter');
+    expect(calls.at(-1)).toEqual(['picker_choose', { opId: 1, target: 'slack-paste' }]);
+  });
+
+  it('focuses the filter with Command+K, then clears an unmatched query before dismissing', async () => {
+    const { root, calls } = await mount();
+    await key('k', { metaKey: true });
+    expect(document.activeElement).toBe(root.querySelector('input'));
+    await filter(root, 'nothing matches');
+    expect(root.textContent).toContain('No matching formats — press Esc to clear');
+    await key('Enter');
+    await key('Escape');
+    expect(root.querySelector('input')?.value).toBe('');
+    expect(root.querySelectorAll('[data-target]')).toHaveLength(6);
+    expect(calls.some(([command]) => command.startsWith('picker_'))).toBe(false);
+    await key('Escape');
+    expect(calls.at(-1)).toEqual(['picker_dismiss', { opId: 1 }]);
+  });
+
+  it.each([
+    ['msg', 'sms'],
+    ['iMessage', 'sms'],
+    ['wa', 'whatsapp'],
+    ['tg', 'telegram'],
+    ['md', 'plain-text'],
+    ['plain', 'plain-text'],
+    ['SLACK-PASTE', 'slack-paste'],
+  ] as const)('matches %s to %s and supports modified number shortcuts', async (query, target) => {
+    const state = fixture();
+    state.targets = [
+      ...targets,
+      { id: 'sms', label: 'Messages', rich: false },
+      { id: 'whatsapp', label: 'WhatsApp', rich: false },
+    ];
+    const { root, calls } = await mount(state);
+    await filter(root, query);
+    expect(
+      [...root.querySelectorAll<HTMLElement>('[data-target]')].map((card) => card.dataset.target),
+    ).toEqual([target]);
+    await key('1');
+    expect(calls.at(-1)?.[0]).toBe('get_desktop_state');
+    await key('1', { ctrlKey: true });
+    expect(calls.at(-1)).toEqual(['picker_choose', { opId: 1, target }]);
+    await key('1', { metaKey: true });
+    expect(calls.at(-1)).toEqual(['picker_choose', { opId: 1, target }]);
+  });
+
+  it('shows the foreground app and attributes a resolved destination to its pin or auto-detection', async () => {
+    const state = fixture();
+    const slack = { id: 'mac:bundle:com.tinyspeck.slackmacgap', name: 'Slack' };
+    state.activeApp = slack;
+    state.config.pinnedFormats[slack.id] = 'plain-text';
+    state.currentPicker!.suggested = 'plain-text';
+    const { root, reopen } = await mount(state);
+    expect(root.textContent).toContain('Active: Slack · Pinned');
+    delete state.config.pinnedFormats[slack.id];
+    await reopen({
+      ...state.currentPicker!,
+      opId: 2,
+      suggested: undefined,
+      copied: { target: 'slack-paste', label: 'Slack' },
+    });
+    expect(root.textContent).toContain('Active: Slack · Auto-detected');
+    state.activeApp = editor;
+    await reopen({ ...state.currentPicker!, opId: 3 });
+    expect(root.querySelector('.app-context')?.textContent?.trim()).toBe('Active: Editor');
+  });
+
+  it('renders preview metrics and warnings and ignores a late reply from the previous format', async () => {
+    const state = fixture();
+    const markdown = '# Hello **team**';
+    state.currentPicker!.sourcePreview = markdown;
+    let resolveFirst!: (result: MarkdownConversion) => void;
+    const first = new Promise<MarkdownConversion>((resolve) => {
+      resolveFirst = resolve;
+    });
+    const { root, calls, reopen } = await mount(state, async (args) => {
+      if (args?.target === 'rich-text') return first;
+      return conversion('plain-text', 'Hello team', { outputLength: 42, limit: 40 }, [
+        { code: 'table-flattened', severity: 'warning', message: 'Table flattened' },
+        { code: 'info', severity: 'info', message: 'Informational diagnostic' },
+      ]);
+    });
+    await vi.waitFor(() =>
+      expect(calls).toContainEqual([
+        'preview_markdown',
+        { markdown, target: 'rich-text', sourceUrl: null, decorativeUnicode: false },
+      ]),
+    );
+    await key('ArrowRight');
+    await vi.waitFor(() =>
+      expect(root.querySelector('.preview-text')?.textContent).toBe('Hello team'),
+    );
+    expect(calls).toContainEqual([
+      'preview_markdown',
+      { markdown, target: 'plain-text', sourceUrl: null, decorativeUnicode: false },
+    ]);
+    expect(root.querySelector('.metric.over-limit')?.textContent).toContain('42 / 40');
+    expect(root.textContent).toContain('Table flattened');
+    expect(root.textContent).not.toContain('Informational diagnostic');
+    resolveFirst(conversion('rich-text', 'Stale result'));
+    await settle();
+    expect(root.querySelector('.preview-text')?.textContent).toBe('Hello team');
+    await reopen({ ...state.currentPicker!, opId: 2, selected: 'plain-text' });
+    await vi.waitFor(() => {
+      expect(calls.filter(([command]) => command === 'preview_markdown')).toHaveLength(3);
+    });
+  });
+
+  it('remembers the collapsed preview when the picker is mounted again', async () => {
+    const state = fixture();
+    state.currentPicker!.sourcePreview = 'Hello';
+    const { root } = await mount(state);
+    const toggle = button(root, 'Preview');
+    expect(toggle.getAttribute('aria-expanded')).toBe('true');
+    toggle.click();
+    await settle();
+    expect(toggle.getAttribute('aria-expanded')).toBe('false');
+    expect(root.querySelector<HTMLElement>('#picker-preview-output')?.style.display).toBe('none');
+    const next = await mount(state);
+    expect(button(next.root, 'Preview').getAttribute('aria-expanded')).toBe('false');
+  });
+});
+
+describe('first-run welcome', () => {
+  it('shows the configured shortcut, previews and copies the selected sample, and finishes onboarding', async () => {
+    const state = fixture();
+    state.panel = 'welcome';
+    state.currentPicker = null;
+    state.config.hasLaunched = false;
+    const { root, calls } = await mount(state);
+    expect(root.querySelector('h1')?.textContent).toBe('Welcome to copied.md');
+    expect(root.querySelectorAll('.shortcut-keys kbd')).toHaveLength(3);
+    expect(root.querySelector('.shortcut-keys kbd:last-child')?.textContent).toBe('C');
+    button(root, 'Discord').click();
+    await vi.waitFor(() =>
+      expect(root.querySelector('.preview-text')?.textContent).toBe('Converted text'),
+    );
+    const preview = calls.find(
+      ([command, args]) => command === 'preview_markdown' && args?.target === 'discord',
+    );
+    expect(preview?.[1]).toEqual({
+      markdown: expect.stringContaining('**'),
+      target: 'discord',
+      sourceUrl: null,
+      decorativeUnicode: false,
+    });
+    expect(root.textContent).toContain('14 chars');
+    button(root, 'Copy Sample').click();
+    await settle();
+    expect(calls.at(-1)).toEqual([
+      'copy_sample_markdown',
+      { markdown: preview?.[1]?.markdown, target: 'discord' },
+    ]);
+    expect(root.textContent).toContain('Copied! Try pasting it anywhere.');
+    checkbox(root, 'Launch at Login').click();
+    await settle();
+    expect(calls.at(-1)).toEqual(['toggle_login_item', { enabled: true }]);
+    button(root, 'Get Started').click();
+    await settle();
+    expect(calls.slice(-2)).toEqual([
+      ['update_config', { patch: { hasLaunched: true } }],
+      ['close_panel', undefined],
+    ]);
+  });
+
+  it('omits the launch-at-login option on platforms without that capability', async () => {
+    const state = fixture();
+    state.panel = 'welcome';
+    state.capabilities.launchAtLogin = false;
+    const { root } = await mount(state);
+    expect(root.textContent).not.toContain('Launch at Login');
+  });
 });
 
 describe('desktop settings', () => {
+  it('lists saved overrides, including unfocused apps, and removes the selected override', async () => {
+    const state = fixture();
+    const slackId = 'mac:bundle:com.tinyspeck.slackmacgap';
+    state.panel = 'settings';
+    state.config.pinnedFormats = { [slackId]: 'slack-paste', [editor.id]: 'plain-text' };
+    const { root, calls } = await mount(state);
+    expect(root.textContent).toContain('Saved app overrides');
+    const slack = root.querySelector(`li:has([title="${slackId}"])`) as HTMLElement;
+    expect(slack.textContent).toContain('com.tinyspeck.slackmacgap');
+    expect(slack.textContent).toContain('Slack');
+    button(slack, 'Remove').click();
+    await settle();
+    expect(calls.at(-1)).toEqual(['set_app_pin', { appId: slackId, target: null }]);
+    expect(root.querySelector(`[title="${slackId}"]`)).toBeNull();
+    expect(root.querySelector(`[title="${editor.id}"]`)?.textContent).toBe('Editor');
+  });
   it('updates columns, format visibility, and shortcut behavior in the active picker', async () => {
     const { root, calls } = await mount();
     button(root, 'Settings').click();
