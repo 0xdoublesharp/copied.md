@@ -254,3 +254,84 @@ fn bounds_indentation_amplification() {
     let html = format!("{quotes}<pre>{}</pre>", "x\n".repeat(60_000));
     assert_eq!(html_to_markdown(&html), "");
 }
+
+#[test]
+fn covers_inline_css_math_table_and_depth_edge_cases() {
+    // CSS tokenizer escapes, brackets, braces, trailing comments, and unknown style values.
+    assert_eq!(
+        html_to_markdown(concat!(
+            r#"<div style="content: 'a\;b'; --a: [x;y]; --b: {z;w}; font-style: oblique /* tail */; "#,
+            r#"text-decoration: underline blink unknown; white-space: normal /* end */">"#,
+            r#"<span style="font-style: unknown; text-decoration: solid">Text</span></div>"#,
+        )),
+        "*Text*"
+    );
+
+    // Images, inline checkboxes, nested paragraphs inside inline/table/heading, trailing <br>,
+    // link whitespace hoisting, and hoisting Bold/Italic/Strike outside links.
+    assert_eq!(
+        html_to_markdown(concat!(
+            "<h1>Line 1<br>Line 2</h1>",
+            "<p><img alt='Diagram' src='https://example.com/a.png'> ",
+            "<input type='checkbox' checked>Yes <input type='checkbox'>No<br><br></p>",
+            "<p>Before<strong><em><s><a href='https://example.com'> all </a></s></em></strong>After</p>",
+            "<p><strong><em><a href='https://example.com'>inner</a></em></strong></p>",
+            "<p><strong><a href='https://example.com'>one</a></strong></p>",
+            "<p><b>a </b><i>b</i></p>",
+        )),
+        concat!(
+            "# Line 1 Line 2\n\n",
+            "Diagram ☑ Yes ☐ No\n\n",
+            "Before ***~~[all](https://example.com)~~*** After\n\n",
+            "***[inner](https://example.com)***\n\n",
+            "**[one](https://example.com)**\n\n",
+            "**a** *b*",
+        )
+    );
+
+    // Inline paragraph inside table cell and editor code block with leading inline text.
+    assert_eq!(
+        html_to_markdown(
+            "<table><tr><th>H</th></tr><tr><td><p>one</p><p>two</p></td></tr></table>"
+        ),
+        "| H |\n| --- |\n| one two |"
+    );
+    assert_eq!(
+        html_to_markdown("<div style='white-space: pre'>lead<div>next</div></div>"),
+        "```\nlead\nnext\n```"
+    );
+
+    // Math inline newlines, ignored child inside math, and foreign SVG namespace.
+    assert_eq!(
+        html_to_markdown(concat!(
+            "<p><math><script>bad()</script><annotation encoding='tex'>a\nb</annotation></math></p>",
+            "<svg><desc>ignored</desc></svg>",
+        )),
+        "$a b$"
+    );
+
+    // Empty table, stray non-cell child inside <tr>, unknown align, and rowspan=0.
+    assert_eq!(html_to_markdown("<table><tbody></tbody></table>"), "");
+    assert_eq!(
+        html_to_markdown(concat!(
+            "<table><tr><th>A</th><!-- comment --><th align='justify'>B</th></tr>",
+            "<tr><td rowspan='0'>L</td><td>R1</td></tr>",
+            "<tr><td>R2</td></tr></table>",
+        )),
+        "| A | B |\n| --- | --- |\n| L | R1 |\n| | R2 |"
+    );
+
+    // Depth-bounded lists, tables, rows, raw text, and math annotations.
+    let pad = "<div>".repeat(MAX_HTML_DEPTH - 1);
+    assert_eq!(
+        html_to_markdown(&format!(
+            "{pad}<div><ul><li>deep</li></ul><table><tr><td>cell</td></tr></table><math><annotation encoding='tex'>x</annotation></math></div>"
+        )),
+        ""
+    );
+    let table_pad = "<div>".repeat(MAX_HTML_DEPTH - 2);
+    assert_eq!(
+        html_to_markdown(&format!("{table_pad}<table><tr><td>deep</td></tr></table>")),
+        ""
+    );
+}

@@ -264,24 +264,28 @@ private func inspectPicker(
     inspect: @escaping @MainActor (NSWindow, NSView) throws -> Void
 ) throws -> Choice {
     var failure: Error?
+    var inspected = false
     let timeout = afterModalStarts(delay: 2) {
         failure = Failure("The format picker did not finish its action.")
         NSApp.abortModal()
     }
     defer { timeout.invalidate() }
-    afterModalStarts {
+    let inspectTimer = afterModalStarts {
         do {
             guard let window = NSApp.modalWindow, let view = window.contentView else {
                 throw Failure("The format picker did not open a modal window.")
             }
+            inspected = true
             try inspect(window, view)
         } catch {
             failure = error
             NSApp.abortModal()
         }
     }
+    defer { inspectTimer.invalidate() }
     let result = try choose(targets, rememberingIn: defaults, copied: copied, suggestedTarget: suggestedTarget)
     if let failure { throw failure }
+    try expect(inspected, "The format picker closed before inspection ran.")
     return result
 }
 
@@ -329,7 +333,8 @@ private func pickerInvariants(_ defaults: UserDefaults) throws {
 
     let dismissed = try inspectPicker(targets, defaults: defaults) { _, _ in NSApp.abortModal() }
     try expect(dismissed.target == nil, "A real modal dismissal selected a target.")
-    afterModalStarts { NSApp.stopModal(withCode: .alertFirstButtonReturn) }
+    let alertTimer = afterModalStarts { NSApp.stopModal(withCode: .alertFirstButtonReturn) }
+    defer { alertTimer.invalidate() }
     let response = runDesktopAlert(NSAlert())
     try expect(response == .alertFirstButtonReturn, "A desktop alert did not return its modal response.")
     NSApp.setActivationPolicy(.prohibited)
@@ -731,16 +736,18 @@ private func desktopCopyInvariants(_ defaults: UserDefaults) async throws {
 
     let defaultPicker = DesktopApp(runtime: TestRuntime(warning: false), defaults: defaults,
                                    clipboardDefaults: defaults, clipboard: { board })
-    afterModalStarts {
+    let resignFirst = afterModalStarts {
         defaultPicker.applicationDidResignActive(Notification(name: NSApplication.didResignActiveNotification))
     }
     await defaultPicker.startCopy()?.value
+    resignFirst.invalidate()
     try expect(board.changeCount == unchanged, "Losing focus in the picker wrote to the clipboard.")
 
-    afterModalStarts {
+    let resignSecond = afterModalStarts {
         defaultPicker.applicationDidResignActive(Notification(name: NSApplication.didResignActiveNotification))
     }
     await defaultPicker.startCopy(mode: .copyAndPick)?.value
+    resignSecond.invalidate()
     try expect(board.writeCalls == 2 && board.text == "Converted: Markdown",
                "Switching to the paste destination did not dismiss the grid and retain the automatic copy.")
     defaultPicker.feedback?.cancel()
@@ -1008,17 +1015,33 @@ private func runtimeInvariants(_ bundle: URL, node: URL, converter: URL, default
 
 @main
 enum NativeTests {
-    @MainActor static func main() async {
-        do {
-            if CommandLine.arguments.dropFirst().first == "launch" {
+    @MainActor static func main() {
+        if CommandLine.arguments.dropFirst().first == "launch" {
+            do {
                 try testApplicationLaunch()
-                return
+            } catch {
+                let message = (error as? Failure)?.message ?? error.localizedDescription
+                FileHandle.standardError.write(Data(("Native tests failed: " + message + "\n").utf8))
+                exit(1)
             }
-            try await run()
-        } catch {
-            let message = (error as? Failure)?.message ?? error.localizedDescription
-            FileHandle.standardError.write(Data(("Native tests failed: " + message + "\n").utf8))
-            exit(1)
+            return
+        }
+        // Pump the main RunLoop explicitly instead of using an `async` main entry point:
+        // AppKit's modal abort/stop path calls CFRunLoopStop on the main loop, which causes
+        // Swift's `swift_task_asyncMainDrainQueue` to exit(0) before the async suite finishes.
+        var finished = false
+        Task { @MainActor in
+            defer { finished = true }
+            do {
+                try await run()
+            } catch {
+                let message = (error as? Failure)?.message ?? error.localizedDescription
+                FileHandle.standardError.write(Data(("Native tests failed: " + message + "\n").utf8))
+                exit(1)
+            }
+        }
+        while !finished {
+            RunLoop.main.run(mode: .default, before: Date(timeIntervalSinceNow: 0.05))
         }
     }
 

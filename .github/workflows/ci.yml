@@ -183,12 +183,13 @@ jobs:
         working-directory: fuzz
         run: |
           set -eu
+          host_target="$(rustc +nightly -vV | awk '/^host:/ { print $2 }')"
           for target in $(cargo +nightly fuzz list); do
             corpus="$RUNNER_TEMP/fuzz/corpus/$target"
             artifacts="$RUNNER_TEMP/fuzz/artifacts/$target"
             mkdir -p "$corpus" "$artifacts"
             echo "::group::$target"
-            cargo +nightly fuzz run "$target" "$corpus" -- \
+            cargo +nightly fuzz run --target "$host_target" "$target" "$corpus" -- \
               -max_total_time=20 -len_control=0 -print_final_stats=1 \
               -artifact_prefix="$artifacts/"
             echo "::endgroup::"

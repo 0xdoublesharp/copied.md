@@ -19,7 +19,7 @@ pub fn load_config(path: &Path) -> Result<ConfigV2, ConfigError> {
         schema_version: u8,
     }
 
-    let data = match fs::read(path) {
+    let data = match read_file(path) {
         Ok(data) => data,
         Err(error) if error.kind() == ErrorKind::NotFound => return Ok(ConfigV2::default()),
         Err(error) => return Err(error.into()),
@@ -45,6 +45,54 @@ pub fn save_config(path: &Path, config: &ConfigV2) -> Result<(), ConfigError> {
     let mut tmp = tempfile::NamedTempFile::new_in(parent)?;
     serde_json::to_writer_pretty(tmp.as_file_mut(), &config)?;
     tmp.as_file().sync_all()?;
-    tmp.persist(path).map_err(|error| error.error)?;
+    persist_file(tmp, path)?;
     Ok(())
+}
+
+#[cfg(not(windows))]
+fn read_file(path: &Path) -> std::io::Result<Vec<u8>> {
+    fs::read(path)
+}
+
+#[cfg(not(windows))]
+fn persist_file(tmp: tempfile::NamedTempFile, path: &Path) -> std::io::Result<()> {
+    tmp.persist(path).map(|_| ()).map_err(|error| error.error)
+}
+
+#[cfg(windows)]
+fn is_windows_retryable(error: &std::io::Error) -> bool {
+    // Windows rejects concurrent ReplaceFile/read handles with ACCESS_DENIED (5),
+    // SHARING_VIOLATION (32), or LOCK_VIOLATION (33) until the peer handle closes.
+    error.kind() == ErrorKind::PermissionDenied || matches!(error.raw_os_error(), Some(5 | 32 | 33))
+}
+
+#[cfg(windows)]
+fn read_file(path: &Path) -> std::io::Result<Vec<u8>> {
+    let mut attempts = 0_u32;
+    loop {
+        match fs::read(path) {
+            Ok(data) => return Ok(data),
+            Err(error) if is_windows_retryable(&error) && attempts < 15 => {
+                std::thread::sleep(std::time::Duration::from_millis(1 << attempts.min(4)));
+                attempts += 1;
+            }
+            Err(error) => return Err(error),
+        }
+    }
+}
+
+#[cfg(windows)]
+fn persist_file(mut tmp: tempfile::NamedTempFile, path: &Path) -> std::io::Result<()> {
+    let mut attempts = 0_u32;
+    loop {
+        match tmp.persist(path) {
+            Ok(_) => return Ok(()),
+            Err(error) if is_windows_retryable(&error.error) && attempts < 15 => {
+                tmp = error.file;
+                std::thread::sleep(std::time::Duration::from_millis(1 << attempts.min(4)));
+                attempts += 1;
+            }
+            Err(error) => return Err(error.error),
+        }
+    }
 }
