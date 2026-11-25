@@ -23,6 +23,10 @@ impl Board for DesktopBoard {
         self.0.as_ref().map_err(Clone::clone)?.read_text()
     }
 
+    fn read_html(&self) -> Result<Option<ClipboardSnapshot>, WriteError> {
+        self.0.as_ref().map_err(Clone::clone)?.read_html()
+    }
+
     fn write(
         &mut self,
         payload: &ClipboardPayload,

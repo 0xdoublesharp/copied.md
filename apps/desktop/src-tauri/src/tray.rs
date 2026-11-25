@@ -55,6 +55,13 @@ pub(crate) struct TrayMenu {
 impl TrayMenu {
     pub(crate) fn install(app: &AppHandle) -> tauri::Result<Self> {
         let copy = MenuItem::with_id(app, "copy", "Copy Markdown As…", true, None::<&str>)?;
+        let copy_as_markdown = MenuItem::with_id(
+            app,
+            "copy-as-markdown",
+            "Copy Rich Text as Markdown",
+            true,
+            None::<&str>,
+        )?;
         let enabled = CheckMenuItem::with_id(
             app,
             "shortcut-enabled",
@@ -81,6 +88,7 @@ impl TrayMenu {
             app,
             &[
                 &copy,
+                &copy_as_markdown,
                 &PredefinedMenuItem::separator(app)?,
                 &behavior,
                 &enabled,
@@ -127,7 +135,7 @@ impl TrayMenu {
         // Menu items lack a portable visibility switch. Insert or remove the status row.
         let inserted = self.menu.get(self.shortcut_failure.id()).is_some();
         if failure.is_some() && !inserted {
-            self.menu.insert(&self.shortcut_failure, 4)?;
+            self.menu.insert(&self.shortcut_failure, 5)?;
         } else if failure.is_none() && inserted {
             self.menu.remove(&self.shortcut_failure)?;
         }
@@ -158,6 +166,15 @@ impl TrayMenu {
                     if let Some(detail) = success_detail(state, target) {
                         self.toast.show(app, ToastKind::Success, &title, &detail);
                     }
+                }
+                Feedback::CopiedMarkdown => {
+                    self.flash(app, "Copied as Markdown");
+                    self.toast.show(
+                        app,
+                        ToastKind::Success,
+                        "Copied as Markdown",
+                        "Converted from rich text",
+                    );
                 }
                 Feedback::Warning(title, detail) => {
                     self.toast.show(app, ToastKind::Warning, &title, &detail);
@@ -245,6 +262,7 @@ fn handle_menu(app: &AppHandle, id: &str) {
     let result = with_desktop(app, |desktop| {
         match id {
             "copy" => desktop.start(Some(ShortcutCopyMode::Picker))?,
+            "copy-as-markdown" => desktop.copy_html_as_markdown()?,
             "settings" => desktop.show_panel(Panel::Settings)?,
             "pin" => desktop.show_panel(Panel::AppPin)?,
             "shortcut-record" => desktop.show_panel(Panel::Shortcut)?,

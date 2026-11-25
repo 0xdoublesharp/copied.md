@@ -544,6 +544,38 @@ fn preview_ipc_decodes_camel_case_parameters_and_returns_conversion() {
 }
 
 #[test]
+fn copy_html_as_markdown_converts_clipboard_html_and_emits_markdown_feedback() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut board = FakeBoard::with_text("copied.md");
+    board
+        .write(
+            &copied_core::ClipboardPayload {
+                plain: "copied.md".into(),
+                html: Some("<p><strong>copied.md</strong> with <em>style</em></p>".into()),
+                rtf: None,
+                signal: None,
+            },
+            None,
+        )
+        .unwrap();
+    let mut desktop = desktop(
+        board,
+        dir.path().join("config.json"),
+        ConfigV2::default(),
+        CountingFactory::default(),
+    );
+    desktop.copy_html_as_markdown().unwrap();
+    assert_eq!(
+        desktop.engine.board.read_text().unwrap().text,
+        "**copied.md** with *style*"
+    );
+    assert!(matches!(
+        desktop.engine.notifier.0.as_slice(),
+        [Feedback::CopiedMarkdown]
+    ));
+}
+
+#[test]
 fn isolated_self_test_passes() {
     crate::self_test::isolated_checks().unwrap();
 }

@@ -24,6 +24,7 @@ use crate::{
 #[derive(Debug)]
 pub(crate) enum Feedback {
     Copied(CopyTarget),
+    CopiedMarkdown,
     Warning(String, String),
     Error(String),
 }
@@ -171,6 +172,28 @@ impl<F: WindowFactory> Desktop<F> {
             }
         }
         Ok(())
+    }
+
+    pub(crate) fn copy_html_as_markdown(&mut self) -> Result<(), DesktopError> {
+        if self.shortcut.is_recording() {
+            return Ok(());
+        }
+        match self.engine.convert_html_to_markdown() {
+            Ok(_) => {
+                // Replace the generic PlainText feedback emitted by CopyEngine with a clearer
+                // Markdown toast so users immediately see the reverse conversion succeeded.
+                if matches!(
+                    self.engine.notifier.0.last(),
+                    Some(Feedback::Copied(CopyTarget::PlainText))
+                ) {
+                    self.engine.notifier.0.pop();
+                    self.engine.notifier.0.push(Feedback::CopiedMarkdown);
+                }
+                Ok(())
+            }
+            Err(EngineError::Busy) => Ok(()),
+            Err(error) => Err(error.into()),
+        }
     }
 
     pub(crate) fn copy_sample(
