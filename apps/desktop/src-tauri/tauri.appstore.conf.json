@@ -1,0 +1,9 @@
+{
+  "bundle": {
+    "targets": ["app"],
+    "macOS": {
+      "entitlements": "entitlements.mas.plist",
+      "hardenedRuntime": false
+    }
+  }
+}
