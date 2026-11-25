@@ -399,7 +399,7 @@ fn finish(mut builder: Builder, source_for_eof: Option<&str>) -> Fragment {
 /// Whether `source` ends with `</span\s*>` (ASCII case-insensitive).
 pub(crate) fn ends_with_span_close(source: &str) -> bool {
     let trimmed = source.strip_suffix('>').map(|s| s.trim_end_matches(|c: char| c.is_ascii_whitespace()));
-    trimmed.is_some_and(|s| s.len() >= 6 && s[s.len() - 6..].eq_ignore_ascii_case("</span"))
+    trimmed.is_some_and(|s| s.len() >= 6 && s.as_bytes()[s.len() - 6..].eq_ignore_ascii_case(b"</span"))
 }
 
 fn to_owned_tree(sink: &Sink, root: usize, limited: &mut bool) -> Vec<HNode> {
@@ -568,6 +568,8 @@ mod tests {
         let HNode::Element(outer) = &eof.children[0] else { panic!() };
         assert!(outer.explicit_close, "source ends with </span>, like the parse5 position check");
 
+        assert!(!ends_with_span_close("<em>\u{800}</em>"));
+        assert!(ends_with_span_close("x</SPAN \n>"));
         let open = parse_fragment("<span>a");
         let HNode::Element(span) = &open.children[0] else { panic!() };
         assert!(!span.explicit_close);

@@ -136,6 +136,11 @@ fn render_safe(
     depth_limited: bool,
 ) -> RichHtml {
     sanitize::prepare_links(&mut nodes, source_url);
+    // Converting Slack tables before sanitizing keeps captions, which the schema
+    // would otherwise unwrap into loose text.
+    if improved && destination == Some(Destination::SlackPaste) {
+        tables_to_code(&mut nodes, true);
+    }
     let mut clean = sanitize::sanitize(nodes);
     sanitize::repair_clobbered_fragments(&mut clean);
     match destination {

@@ -1,0 +1,8 @@
+# Seeds for failure cases proptest has generated in the past. It is
+# automatically read and these particular cases re-run before any
+# novel cases are generated.
+#
+# It is recommended to check this file in to source control so that
+# everyone who runs the test benefits from these saved cases.
+cc 459369043807eedea06cce37a22864d514669b0c244a7f26634ae42c16a6b460 # shrinks to source = "\u{fdd0}forged\u{fdd2} \u{fdd1} <span data-spoiler=\"true\">s</span> \0", has_url = false, decorative_unicode = false
+cc 714cd9314f42e04814e89ebe8aa76a453003ae8fbf827754e25fb277ba7c263f # shrinks to source = "Before <span data-spoiler=\"true\">covered</span> after.\n\n*ࠀ*", has_url = false, decorative_unicode = false

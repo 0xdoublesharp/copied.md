@@ -309,6 +309,40 @@ fn rtf_balance(content: &str) -> (usize, Vec<String>) {
     (closes, opens)
 }
 
+/// Markdown delimiters left unbalanced by removing `content`, re-closed
+/// innermost first.
+fn markdown_balance(content: &str) -> String {
+    let chars: Vec<char> = content.chars().collect();
+    let mut stack: Vec<&str> = Vec::new();
+    let mut index = 0;
+    while index < chars.len() {
+        if chars[index] == '\\' {
+            index += 2;
+            continue;
+        }
+        let pair = |c: char| chars.get(index) == Some(&c) && chars.get(index + 1) == Some(&c);
+        let token = if pair('*') {
+            "**"
+        } else if pair('~') {
+            "~~"
+        } else if chars[index] == '*' {
+            "*"
+        } else if chars[index] == '_' {
+            "_"
+        } else {
+            index += 1;
+            continue;
+        };
+        if stack.last() == Some(&token) {
+            stack.pop();
+        } else {
+            stack.push(token);
+        }
+        index += token.len();
+    }
+    stack.iter().rev().copied().collect()
+}
+
 fn placeholder(surface: Surface, content: &str) -> String {
     match surface {
         Surface::Rtf => {
@@ -326,11 +360,14 @@ fn placeholder(surface: Surface, content: &str) -> String {
             }
             out
         }
-        Surface::Plain | Surface::Discord | Surface::Reddit => PLACEHOLDER.to_owned(),
+        Surface::Discord | Surface::Reddit => format!("{PLACEHOLDER}{}", markdown_balance(content)),
+        Surface::Plain => PLACEHOLDER.to_owned(),
     }
 }
 
 fn native(surface: Surface, before: &str, content: &str) -> Option<String> {
+    // Backslash escapes may not stop a destination's closing marker; ignore them.
+    let unescaped = content.replace('\\', "");
     match surface {
         Surface::TelegramHtml => {
             let (closes, opens) = html_balance(content);
@@ -338,16 +375,20 @@ fn native(surface: Surface, before: &str, content: &str) -> Option<String> {
             (closes.is_empty() && opens.is_empty() && !blocky).then(|| format!("<tg-spoiler>{content}</tg-spoiler>"))
         }
         Surface::Discord => (!content.is_empty()
-            && !content.contains("||")
+            && !unescaped.contains("||")
+            && !content.starts_with('|')
+            && !content.ends_with('|')
+            && !content.contains("\n\n")
             && !content.contains("```")
             && !inside_code_fence(before))
         .then(|| format!("||{content}||")),
         Surface::Reddit => {
             let unescaped_pipe = content.char_indices().any(|(i, c)| c == '|' && !content[..i].ends_with('\\'));
             (!content.is_empty()
+                && !unescaped.starts_with('<')
                 && !content.contains('\n')
-                && !content.contains("!<")
-                && !content.contains(">!")
+                && !unescaped.contains("!<")
+                && !unescaped.contains(">!")
                 && !unescaped_pipe
                 && !inside_code_fence(before))
             .then(|| format!(">!{content}!<"))
@@ -444,6 +485,9 @@ mod tests {
         assert_eq!(resolve(&tg, Surface::TelegramHtml, true).text, "<strong>a [spoiler omitted]</strong><a>d</a>");
         let rtf = format!("{{\\b a}} {OPEN_SPOILER}{{\\field{{\\*\\fldinst HYPERLINK \"u\"}}{{\\fldrslt la{CLOSE_SPAN}bel}}}}");
         assert_eq!(resolve(&rtf, Surface::Rtf, true).text, "{\\b a} [spoiler omitted]{\\field{\\fldrslt bel}}");
+        let crossing = format!("Before **{OPEN_SPOILER}private** text{CLOSE_SPAN}");
+        assert_eq!(resolve(&crossing, Surface::Discord, false).text, "Before **[spoiler omitted]**");
+        assert_eq!(markdown_balance("a \\* ~~b~~ _c *d"), "*_");
         let unclosed = format!("a {OPEN_SPOILER}secret\n\nmore");
         let resolved = resolve(&unclosed, Surface::Discord, true);
         assert_eq!((resolved.text.as_str(), resolved.omitted), ("a [spoiler omitted]", 1));
@@ -451,6 +495,9 @@ mod tests {
         assert_eq!(resolve(&fenced, Surface::Discord, true).text, "```\n[spoiler omitted]\n```");
         assert_eq!(resolve(&format!("{OPEN_SPOILER}a||b{CLOSE_SPAN}"), Surface::Discord, true).omitted, 1);
         assert_eq!(resolve(&format!("{OPEN_SPOILER}a!<b{CLOSE_SPAN}"), Surface::Reddit, true).omitted, 1);
+        assert_eq!(resolve(&format!("{OPEN_SPOILER}<b{CLOSE_SPAN}"), Surface::Reddit, true).omitted, 1);
+        assert_eq!(resolve(&format!("{OPEN_SPOILER}a|{CLOSE_SPAN}"), Surface::Discord, true).omitted, 1);
+        assert_eq!(resolve(&format!("{OPEN_SPOILER}|a{CLOSE_SPAN}"), Surface::Discord, true).omitted, 1);
         assert_eq!(resolve(&format!("{OPEN_SPOILER}x{CLOSE_SPAN}"), Surface::Discord, false).text, PLACEHOLDER);
         assert_eq!(neutralize("a\u{FDD0}b"), "a\u{FFFD}b");
     }

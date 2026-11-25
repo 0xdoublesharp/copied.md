@@ -1,0 +1,107 @@
+# Intentional differences between copied-core and the frozen ts-oracle-v1
+# TypeScript engine (tests/golden/corpus.json).
+#
+# tests/parity.rs checks every golden case field by field:
+#   * a field that differs from the oracle must be covered by an entry below
+#     (matching target, field, and case) and must equal the reviewed value in
+#     tests/parity/improved.json;
+#   * every entry must still differ from the oracle for at least one covered
+#     field, so stale entries fail;
+#   * every other field must equal the oracle exactly.
+#
+# Keys: id, title, rationale (multi-line """ strings allowed), targets, fields
+# (text/plain, text/html, text/rtf, text/signal, diagnostics, metrics), cases.
+# Unknown keys are rejected.
+
+[[divergence]]
+id = "nested-emphasis-markers"
+title = "Do not repeat bold, italic, or strike markers inside the same style"
+rationale = """
+The oracle wraps every strong, emphasis, and delete node, so a bold run inside a
+heading (which is already bold) or inside another bold run produced
+`**Bold* heading*` in Slack mrkdwn and WhatsApp, which both apps render with
+stray asterisks, and `<strong><strong>` in Telegram and Signal HTML. The
+renderer now tracks the active bold, italic, and strike state and only emits a
+marker when the style turns on, giving `*Bold heading*` and
+`<strong>Bold heading</strong>`.
+"""
+targets = ["slack-api", "whatsapp", "telegram", "signal"]
+fields = ["text/plain", "text/html", "text/signal", "metrics"]
+cases = ["headings-and-styles"]
+
+[[divergence]]
+id = "telegram-native-spoilers"
+title = "Telegram spoilers use <tg-spoiler> and never leak into plain text or RTF"
+rationale = """
+The oracle ignored `<span data-spoiler="true">` for Telegram, so spoiler text
+was pasted in the clear in every representation. Telegram's HTML clipboard
+format supports `<tg-spoiler>`, so valid spoilers are now kept hidden there,
+while text/plain and text/rtf (which cannot hide text) show
+`[spoiler omitted]` with an info diagnostic. A malformed spoiler (crossing
+emphasis, unclosed) fails closed in every representation with a warning, using
+the same validity rules as Signal.
+"""
+targets = ["telegram"]
+fields = ["text/plain", "text/html", "text/rtf", "diagnostics", "metrics"]
+cases = ["clipboard-fidelity", "signal-spoilers-valid", "signal-spoilers-malformed"]
+
+[[divergence]]
+id = "discord-reddit-native-spoilers"
+title = "Discord ||spoilers|| and Reddit >!spoilers!< with fail-closed fallback"
+rationale = """
+The oracle stripped the span and copied spoiler text verbatim to Discord and
+Reddit, both of which have native spoiler syntax. Valid spoilers now become
+`||text||` (Discord) or `>!text!<` (Reddit). When the destination cannot hold
+the spoiler (inside a code block or table code block, across paragraphs for
+Reddit, or containing the closing delimiter) the content is replaced with
+`[spoiler omitted]` and an info diagnostic. Malformed spoilers are always
+replaced with a warning, and dangling emphasis markers are re-closed.
+"""
+targets = ["discord", "reddit"]
+fields = ["text/plain", "diagnostics", "metrics"]
+cases = ["clipboard-fidelity", "signal-spoilers-valid", "signal-spoilers-malformed"]
+
+[[divergence]]
+id = "aligned-monospace-tables"
+title = "Aligned columns for tables shown in monospace"
+rationale = """
+Slack paste, Discord, and WhatsApp cannot show real tables, so the oracle
+flattened them to `a | b` rows whose columns never lined up, and Discord kept
+literal backslash-pipe escapes inside a code block where they are shown as-is. These
+destinations now pad every column but the last to its widest cell (East Asian
+wide characters count twice), add a dashed rule under the header row, keep
+captions and safe link URLs, and drop pipe escapes inside monospace. WhatsApp
+tables move into a triple-backtick block and fall back to the old rows when a
+cell contains a triple backtick.
+"""
+targets = ["slack-paste", "discord", "whatsapp"]
+fields = ["text/plain", "text/html", "metrics"]
+cases = ["clipboard-fidelity", "tables-gfm-and-html"]
+
+[[divergence]]
+id = "teams-word-quote-and-code-styles"
+title = "Teams and Word style block quotes and give code a subtle background"
+rationale = """
+Teams and Word drop the default browser styling of `<blockquote>` and render
+code with no visual separation, so pasted quotes looked like ordinary
+paragraphs. Fixed, sanitizer-independent inline styles are now added after
+sanitization: block quotes get a left border, margin, padding, and muted color,
+and `pre`/`code` get `background-color: #f4f4f4` alongside the existing font
+styles.
+"""
+targets = ["teams", "word"]
+fields = ["text/html"]
+cases = ["whitespace-only", "clipboard-fidelity", "headings-and-styles", "tables-gfm-and-html", "code-blocks-and-backticks", "blockquotes-nested", "signal-spoilers-valid", "telegram-rtf-unicode-and-tabs"]
+
+[[divergence]]
+id = "task-list-checkbox-glyphs"
+title = "Visible checkbox glyphs for task lists in Slack, Teams, and Word"
+rationale = """
+Slack, Teams, and Word strip `<input type="checkbox">` on paste, which silently
+removed the done/open state of GFM task items. The checkbox is now replaced by
+a visible `☑` or `☐` glyph, keeping the single space that already separates
+it from the item text.
+"""
+targets = ["slack-paste", "teams", "word"]
+fields = ["text/html"]
+cases = ["lists-and-tasks"]
