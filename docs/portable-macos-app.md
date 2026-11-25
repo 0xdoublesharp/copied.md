@@ -1,8 +1,8 @@
-# macOS build and packaging
+# Swift macOS app build and packaging
 
-The menu-bar app supports macOS 13.5 or later on Apple silicon and Intel. It bundles the same converter as the CLI, a universal Node runtime, and a universal pasteboard helper.
+These instructions build the Swift menu-bar app in `apps/macos`, which runs on macOS 13.5 or later on Apple silicon and Intel. The bundle includes the TypeScript converter, a universal Node runtime, and a universal pasteboard helper. For the Tauri desktop app, use the [desktop build and packaging guide](app-store-and-packaging.md#macos).
 
-With Xcode Command Line Tools and the repository dependencies installed, run `pnpm build:macos-app`. It writes `copied.md.app` and `copied-md-macos-universal.zip` under `build/portable`. Set `COPIED_MD_APP_OUT` to use a different output directory. Set `COPIED_MD_NODE_CACHE` to override the runtime archive cache at `build/macos-runtimes`.
+Install Xcode Command Line Tools and the repository dependencies, then run `pnpm build:macos-app`. It writes `copied.md.app` and `copied-md-macos-universal.zip` under `build/portable`. Set `COPIED_MD_APP_OUT` to use a different output directory. Set `COPIED_MD_NODE_CACHE` to override the runtime archive cache at `build/macos-runtimes`.
 
 Run `pnpm build:macos` for the standalone pasteboard helper. Set `COPIED_MD_MACOS_OUT` to override its default output at `build/macos`.
 
@@ -25,7 +25,7 @@ build/portable/copied.md.app/Contents/MacOS/copied-md --self-test
 build/portable/copied.md.app/Contents/Helpers/copied-md-pasteboard self-test
 ```
 
-For a release smoke test, download the published ZIP as a macOS user who has never installed copied.md. Unzip it in Finder, move the app to **Applications**, and launch it. With a Markdown selection in VS Code, install the copied.md VSIX from the Extensions menu, run **Copy Markdown As…**, and paste as Rich Text. The menu-bar app and the VS Code copy should work without entering a helper path.
+For a release smoke test, use a macOS account that has never installed copied.md. Download the ZIP, unzip it in Finder, move the app to **Applications**, and open it. Install the copied.md VSIX in local VS Code. Select Markdown, run **Copy Markdown As…**, choose **Rich Text**, and paste into a rich-text editor. Check that VS Code uses the bundled helper without a custom path.
 
 ## Use the format grid
 
@@ -39,6 +39,6 @@ Use **Copy Markdown As…** from the menu bar whenever you want to choose before
 
 To use a particular format in an app, focus that app and select **Choose Format for [app]…** from the clipboard menu. The shortcut uses the pinned format when that app is focused. In picker-first mode, it highlights that format. Choose **Use Last-Used Format** to remove the pin. Use **Copy Markdown As…** to pick a different format for a single copy.
 
-Choose **Signal**, then paste normally into Signal Desktop. The Signal format includes a plain-text fallback for other apps. If you customized the keyboard shortcut, **Reset to Default Shortcut** switches it to `⌃⌘C`.
+Choose **Signal** for rich paste into Signal Desktop. Other apps can use the plain-text fallback. If you customized the keyboard shortcut, **Reset to Default Shortcut** switches it to `⌃⌘C`.
 
 See the [macOS format grid in the app guide](https://www.justinsilver.com/libraries/copied-md/#macos-format-grid).

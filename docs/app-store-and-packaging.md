@@ -1,20 +1,18 @@
 # Packaging and store submission
 
-This guide covers building, signing, and submitting copied.md 2 for each channel. Each section separates what the repository already configures from what the releaser supplies (certificates, profiles, store accounts, and any step that is not yet wired up).
-
-Build the desktop app from `apps/desktop` on the target operating system after installing the UI dependencies:
+Build desktop packages on the target operating system. Start in `apps/desktop` and install the UI dependencies.
 
 ```sh
 pnpm --dir ui --ignore-workspace install --frozen-lockfile
 ```
 
-Run `copied-md --self-test` from each built app before signing a release. It exercises an isolated clipboard, rejects a stale write, and round-trips the copy engine and configuration. On macOS it also binds and releases temporary F18 and F19 shortcuts.
+Run the built desktop executable with `--self-test` before releasing it. The test exercises an isolated clipboard, stale-write detection, the copy engine, and configuration persistence. On macOS it also binds and releases temporary F18 and F19 shortcuts. The commands below use the default Cargo output paths. Adjust them if you set `CARGO_TARGET_DIR`.
 
 ## macOS
 
-Both macOS channels ship a universal (`arm64` + `x86_64`) bundle with identifier `md.copied.desktop`, main binary `copied-md`, and a minimum of macOS 13.5. `macOSPrivateApi` is `false` in `tauri.conf.json`, so the app uses no private AppKit API in either channel.
+Both channels build a universal bundle (Apple silicon and Intel) for macOS 13.5 or later. The bundle identifier is `md.copied.desktop`, and the main executable is `copied-md`. The Tauri config sets `macOSPrivateApi` to `false`.
 
-Install both Apple Rust targets once:
+Install the Apple silicon and Intel Rust targets before building.
 
 ```sh
 rustup target add aarch64-apple-darwin x86_64-apple-darwin
@@ -22,79 +20,86 @@ rustup target add aarch64-apple-darwin x86_64-apple-darwin
 
 ### Mac App Store
 
-The repository configures:
+The checked-in `src-tauri/tauri.appstore.conf.json` builds the `.app` with the App Sandbox entitlement and disables hardened runtime. Use the desktop app by itself for this channel. Launch at login uses `SMAppService` and is off by default.
 
-- `src-tauri/tauri.appstore.conf.json`, which builds only the `.app`, uses `entitlements.mas.plist`, and turns off hardened runtime (App Store builds are sandboxed instead).
-- `src-tauri/entitlements.mas.plist`, which grants only `com.apple.security.app-sandbox`. No JIT, no unsigned executable memory, no network client, and no file access entitlements.
-- Launch at login through `SMAppService` (`copied-platform`), off until the user turns it on. App Store review requires this to be opt-in.
+1. Create a release-only config for the Apple Distribution signing identity and Mac App Store provisioning profile. Map the profile to `embedded.provisionprofile` under `bundle.macOS.files`.
+2. Copy `entitlements.mas.plist` for the release and add `com.apple.application-identifier` (`<TEAMID>.md.copied.desktop`) and `com.apple.developer.team-identifier` to match the profile. Set `bundle.macOS.entitlements` to the release copy.
+3. Set `APPLE_SIGNING_IDENTITY` or `bundle.macOS.signingIdentity` for app signing. Use a Mac Installer Distribution certificate for the `.pkg`.
+4. Set `ITSAppUsesNonExemptEncryption` in the release Info.plist according to the app’s encryption use. [Tauri App Store distribution](https://v2.tauri.app/distribute/app-store/)
 
-The App Store build contains no Node runtime, no bundled CLI, and no helper executables. Do not add the `copied-md` CLI helper to this build.
-
-The releaser supplies:
-
-1. An Apple Distribution certificate and a Mac App Store provisioning profile for `md.copied.desktop`. Add the profile through `bundle.macOS.files` as `embedded.provisionprofile` in a release-only config. Do not commit it.
-2. A release-only copy of `entitlements.mas.plist` that adds `com.apple.application-identifier` (`<TEAMID>.md.copied.desktop`) and `com.apple.developer.team-identifier`, matching the profile.
-3. The signing identity, through `APPLE_SIGNING_IDENTITY` or `bundle.macOS.signingIdentity` in a release-only config.
-4. A Mac Installer Distribution certificate for the `.pkg`.
-
-Build, package, and upload:
+Apply the release config after the checked-in App Store config. Verify the signed app before packaging it for upload. Set `KEY_ID` and `ISSUER_ID` to your App Store Connect API credentials for the upload.
 
 ```sh
 pnpm --dir ui tauri build --target universal-apple-darwin --bundles app \
-  --config src-tauri/tauri.appstore.conf.json
+  --config src-tauri/tauri.appstore.conf.json --config /path/to/appstore-release.conf.json
+app="src-tauri/target/universal-apple-darwin/release/bundle/macos/copied.md.app"
+codesign -d --entitlements - "$app"
+codesign --verify --deep --strict --verbose=2 "$app"
 xcrun productbuild --sign "3rd Party Mac Developer Installer: <Team Name> (<TEAMID>)" \
-  --component "src-tauri/target/universal-apple-darwin/release/bundle/macos/copied.md.app" \
-  /Applications copied.md.pkg
+  --component "$app" /Applications copied.md.pkg
 xcrun altool --upload-app --type macos --file copied.md.pkg \
-  --apiKey <KEY_ID> --apiIssuer <ISSUER_ID>
+  --apiKey "$KEY_ID" --apiIssuer "$ISSUER_ID"
 ```
 
-Tauri's guide also asks for `ITSAppUsesNonExemptEncryption` in the app's `Info.plist`, and `src-tauri/Info.plist` does not set it yet. Set it to `false` as long as the app uses no encryption beyond what macOS provides.
-
-Before submitting, check the sandbox and entitlements on the signed app:
-
-```sh
-codesign -d --entitlements - "copied.md.app"
-codesign --verify --deep --strict --verbose=2 "copied.md.app"
-```
-
-In App Store Connect, explain that the app reads and writes the general pasteboard only when the user invokes a copy, and that it registers a global shortcut the user chooses. Tauri's guide covers the remaining App Store Connect steps: [Tauri App Store distribution](https://v2.tauri.app/distribute/app-store/).
+In App Store Connect, describe the user-invoked clipboard reads and writes, the configurable global shortcut, and the opt-in launch at login.
 
 ### Developer ID (direct download)
 
-The repository configures:
-
-- The default `tauri.conf.json`, which turns on hardened runtime and uses `entitlements.direct.plist`.
-- `src-tauri/entitlements.direct.plist`, an empty dictionary. The app needs no hardened-runtime exceptions.
-
-The releaser supplies a Developer ID Application certificate and notarization credentials (`APPLE_ID`, `APPLE_PASSWORD` as an app-specific password, and `APPLE_TEAM_ID`, or an App Store Connect API key). Tauri signs and notarizes when these are set.
+The default config enables hardened runtime and uses the empty `src-tauri/entitlements.direct.plist`. Supply a Developer ID Application certificate and notarization credentials. Tauri accepts `APPLE_ID`, an app-specific `APPLE_PASSWORD`, and `APPLE_TEAM_ID`, or App Store Connect API credentials. [Tauri macOS signing and notarization](https://v2.tauri.app/distribute/sign/macos/)
 
 ```sh
 export APPLE_SIGNING_IDENTITY="Developer ID Application: <Team Name> (<TEAMID>)"
 pnpm --dir ui tauri build --target universal-apple-darwin --bundles app,dmg
-spctl --assess --type execute --verbose "src-tauri/target/universal-apple-darwin/release/bundle/macos/copied.md.app"
-xcrun stapler validate "src-tauri/target/universal-apple-darwin/release/bundle/dmg/"*.dmg
+app="src-tauri/target/universal-apple-darwin/release/bundle/macos/copied.md.app"
+spctl --assess --type execute --verbose "$app"
+xcrun stapler validate "$app"
 ```
 
-The direct build should also carry the native `copied-md` CLI in `Contents/Helpers` so users can link it onto their `PATH`. This is not wired into `tauri.conf.json` yet. To add it for a release:
+#### Bundle the VS Code pasteboard helper
 
-1. Build a universal CLI: `cargo build --release -p copied-cli --target aarch64-apple-darwin` and the same for `x86_64-apple-darwin`, then `lipo -create` the two binaries.
-2. Copy it to `copied.md.app/Contents/Helpers/copied-md` before signing. The app's own executable is also named `copied-md`, but it lives in `Contents/MacOS`, so the names do not collide.
-3. Sign the helper with the Developer ID identity, `--options runtime`, and a secure timestamp, then re-sign the app, notarize, and staple.
-4. Never add the helper to the App Store build.
+The default Tauri bundle contains the desktop executable. To support rich paste in VS Code, build the CLI for both Apple targets and use `lipo -create` to combine them under the name `copied-md-pasteboard`. Run the Cargo commands from the repository root.
+
+```sh
+cargo build --release --locked -p copied-cli --target aarch64-apple-darwin
+cargo build --release --locked -p copied-cli --target x86_64-apple-darwin
+lipo -create "target/aarch64-apple-darwin/release/copied-md" \
+  "target/x86_64-apple-darwin/release/copied-md" \
+  -output /absolute/path/to/copied-md-pasteboard
+```
+
+Add the helper to a Developer ID release override and pass it to the Tauri build with `--config`. This puts the helper at `Contents/Helpers/copied-md-pasteboard` before the app is signed and packaged. Use this override for direct downloads only. [Tauri macOS bundle configuration](https://v2.tauri.app/reference/config/#macconfig)
+
+```json
+{
+  "bundle": {
+    "macOS": {
+      "files": {
+        "Helpers/copied-md-pasteboard": "/absolute/path/to/copied-md-pasteboard"
+      }
+    }
+  }
+}
+```
+
+Sign the helper before running the Tauri build with the override. Tauri copies it into the bundle as a custom file.
+
+```sh
+codesign --force --sign "$APPLE_SIGNING_IDENTITY" --options runtime --timestamp \
+  /absolute/path/to/copied-md-pasteboard
+```
+
+Verify the helper’s signature as well as the app’s. Install the app in Applications and test rich paste from local VS Code. You can also create a symlink named `copied-md` on your `PATH` to use the bundled helper as a CLI.
 
 ## Windows
 
-The default Tauri bundle targets on Windows are NSIS (`.exe` installer) and MSI. The repository configures no certificate.
-
-The releaser supplies an Authenticode code-signing certificate. An EV certificate or Azure Trusted Signing avoids most SmartScreen warnings on a new publisher. Set `bundle.windows.certificateThumbprint`, `digestAlgorithm: "sha256"`, and `timestampUrl` in a release-only config, or a `signCommand` for Trusted Signing.
+Tauri builds NSIS (`.exe`) and MSI installers on Windows. For a signed release, set the Authenticode certificate thumbprint, `digestAlgorithm: "sha256"`, and `timestampUrl` under `bundle.windows`, or set `signCommand` for Trusted Signing. Pass the release config to the build with `--config`. [Tauri Windows code signing](https://v2.tauri.app/distribute/sign/windows/)
 
 ```powershell
-pnpm --dir ui tauri build --bundles nsis
+pnpm --dir ui tauri build --bundles nsis --config "C:\path\to\windows-signing.conf.json"
 Get-AuthenticodeSignature "src-tauri\target\release\bundle\nsis\*.exe"
 ```
 
-For the Microsoft Store, submit a signed offline installer as an unpackaged Win32 app in Partner Center. The Store requires the offline WebView2 install mode, which the default config does not use. Add a Store-only config, `src-tauri/tauri.microsoftstore.conf.json`, that sets the install mode and a `bundle.publisher` different from `productName` (`copied.md`):
+For the Microsoft Store, submit a signed offline installer as an unpackaged Win32 app in Partner Center. Create `src-tauri/tauri.microsoftstore.conf.json` with the offline WebView2 install mode and a publisher name distinct from the product name (`copied.md`). [Tauri Microsoft Store distribution](https://v2.tauri.app/distribute/microsoft-store/)
 
 ```json
 {
@@ -106,21 +111,17 @@ For the Microsoft Store, submit a signed offline installer as an unpackaged Win3
 ```
 
 ```powershell
-pnpm --dir ui tauri build --bundles nsis --config src-tauri/tauri.microsoftstore.conf.json
+pnpm --dir ui tauri build --bundles nsis --config "C:\path\to\windows-signing.conf.json" --config src-tauri/tauri.microsoftstore.conf.json
 ```
 
 1. Enroll as a Microsoft developer and reserve the app name in Partner Center as an **EXE or MSI app**.
 2. Host the signed installer at a stable HTTPS URL that serves a versioned file.
-3. Give the installer URL and the silent install argument: `/S` for NSIS, or `/quiet` for MSI.
+3. Supply the installer URL and silent install argument (`/S` for NSIS or `/quiet` for MSI).
 4. Describe the clipboard access and global shortcut in the certification notes.
-
-[Tauri Microsoft Store distribution](https://v2.tauri.app/distribute/microsoft-store/)
-
-An MSIX package is not configured.
 
 ## Linux
 
-The default Tauri bundle targets on Linux are AppImage, `.deb`, and `.rpm`. Build each on the oldest distribution you support, since WebKitGTK and glibc versions are set at build time.
+The default Tauri bundle targets on Linux are AppImage, `.deb`, and `.rpm`. Build on the oldest distribution you plan to support so the packages use compatible WebKitGTK and glibc versions.
 
 ```sh
 sudo apt-get install -y libwebkit2gtk-4.1-dev libayatana-appindicator3-dev \
@@ -130,31 +131,31 @@ pnpm --dir ui tauri build --bundles appimage,deb,rpm
 
 Sign the AppImage with `gpg --detach-sign` and publish the `.sig` beside it. Sign the `.deb` and `.rpm` through your repository tooling (`dpkg-sig` or an APT repository key, and `rpm --addsign`).
 
-Flatpak is not configured in the repository. A Flathub manifest needs:
+A Flatpak release needs a Flathub manifest. Include the runtime, permissions, and sources below.
 
-- the GNOME runtime that ships WebKitGTK 4.1;
-- `--socket=wayland`, `--socket=fallback-x11`, and `--share=ipc` for clipboard and shortcut access;
-- `--talk-name=org.freedesktop.portal.Desktop` for the GlobalShortcuts portal;
-- offline Cargo and pnpm sources generated with `flatpak-cargo-generator` and `flatpak-node-generator`.
+- The GNOME runtime that ships WebKitGTK 4.1.
+- `--socket=wayland`, `--socket=fallback-x11`, and `--share=ipc` for clipboard and shortcut access.
+- `--talk-name=org.freedesktop.portal.Desktop` for the GlobalShortcuts portal.
+- Offline Cargo and pnpm sources generated with `flatpak-cargo-generator` and `flatpak-node-generator`.
 
-The Flatpak sandbox may block Wayland data-control access on some compositors. The capability report below then shows background clipboard as unavailable.
+The Flatpak sandbox can limit access to Wayland data control. Check the app’s session capabilities in the packaged build.
 
 ### Session capabilities
 
-`copied-platform` reports what each Linux session supports. The desktop app reads the report at startup and disables the tray's launch-at-login and per-app pin items when they are unavailable. On Wayland, shortcut registration returns a message that points the user to the desktop's keyboard settings.
+Linux clipboard and shortcut support depends on the desktop session.
 
-| Capability                  | Wayland                                                                                                                                 | X11                                                                                           | No display |
-| --------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------- | ---------- |
-| Background clipboard        | Yes, when the compositor exposes `ext_data_control_manager_v1` or `zwlr_data_control_manager_v1` and grants access                      | Yes, through the `CLIPBOARD` selection with XFixes change notifications                       | No         |
-| Global shortcut             | Detected through the GlobalShortcuts portal. The user assigns it in the desktop's keyboard settings; the app cannot register it itself. | Registered directly with X11                                                                  | No         |
-| Active-app detection (pins) | No. Per-app pins never apply, and the remembered target is used.                                                                        | Yes, through `_NET_ACTIVE_WINDOW` and `_NET_WM_PID`, when the shortcut is registered directly | No         |
-| Launch at login             | Yes, through an XDG autostart entry                                                                                                     | Yes, through an XDG autostart entry                                                           | No         |
+| Capability                    | Wayland                                                                                                | X11                                                              | No display  |
+| ----------------------------- | ------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------- | ----------- |
+| Background clipboard          | Requires compositor access to `ext_data_control_manager_v1` or `zwlr_data_control_manager_v1`.         | Uses the `CLIPBOARD` selection with XFixes change notifications. | Unavailable |
+| Global shortcut               | When the GlobalShortcuts portal is available, the app directs you to your desktop’s keyboard settings. | Registers directly with X11.                                     | Unavailable |
+| Active-app detection and pins | Uses the last-used format.                                                                             | Uses `_NET_ACTIVE_WINDOW` and `_NET_WM_PID` when available.      | Unavailable |
+| Launch at login               | Uses XDG autostart when available.                                                                     | Uses XDG autostart when available.                               | Unavailable |
 
-The session counts as Wayland when `WAYLAND_DISPLAY` or `WAYLAND_SOCKET` is set or `XDG_SESSION_TYPE=wayland`. Otherwise it is X11 when `DISPLAY` is set. Compositors without a data-control protocol (GNOME's Mutter, for example) report no background clipboard.
+copied.md identifies Wayland from `WAYLAND_DISPLAY`, `WAYLAND_SOCKET`, or `XDG_SESSION_TYPE=wayland`. Otherwise, it uses X11 if `DISPLAY` is set.
 
 ## Browser extension
 
-The extension builds with WXT from `apps/browser-extension`. Chrome and Edge get Manifest V3 (minimum Chrome 116, `offscreen` for clipboard writes, optional chat-site host permissions). Firefox gets WXT's default Manifest V2 build (minimum Firefox 102, gecko ID `copied-md@copied.md`, optional chat-site permissions).
+Run these commands from the repository root. WXT builds Manifest V3 for Chrome and Edge with `offscreen` clipboard writes and a Chromium minimum of 116. Firefox uses Manifest V2, requires Firefox 102 or later, and has the Gecko ID `copied-md@copied.md`. Chat-site permissions are optional in all three browsers.
 
 ```sh
 pnpm zip            # Chrome
@@ -162,14 +163,14 @@ pnpm zip:edge       # Edge
 pnpm zip:firefox    # Firefox, with the sources ZIP for AMO review
 ```
 
-Store listings and permission explanations are in [chrome-web-store.md](chrome-web-store.md) and [browser-extension-privacy.md](browser-extension-privacy.md).
+See [Chrome Web Store submission](chrome-web-store.md) and [Browser extension privacy](browser-extension-privacy.md).
 
-## WebAssembly cutover
+## WebAssembly migration checklist
 
-The extensions still convert with the TypeScript package `@0xdoublesharp/copied-md-converters`. Switch them to `copied-wasm` only after every item below passes:
+The browser and VS Code extensions use the TypeScript package `@0xdoublesharp/copied-md-converters`. Complete these checks before switching to `copied-wasm`.
 
 - [ ] `cargo check --target wasm32-unknown-unknown -p copied-wasm` and a `wasm-bindgen` build produce a module under the size budget agreed for the extension.
-- [ ] `convert_markdown_json` matches the TypeScript output for the golden corpus in oracle mode, and the seven documented improvements are accepted for the extension.
+- [ ] `convert_markdown_json` matches the TypeScript output for the golden corpus in oracle mode, and the documented improvements are accepted for the extension. [Destination formatting](tauri-rust-architecture.md#destination-formatting)
 - [ ] Chrome and Edge MV3 load the module from the extension package with `wasm-unsafe-eval` in `content_security_policy.extension_pages` and no remote code.
 - [ ] Firefox MV2 loads the module and passes AMO review with the Rust sources included in the sources ZIP.
 - [ ] The VS Code extension loads the module in desktop VS Code and in the web extension host (`vscode.dev`).

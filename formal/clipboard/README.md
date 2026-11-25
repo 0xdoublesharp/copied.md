@@ -6,12 +6,13 @@ Run all six TLC configurations from the repository root.
 sh formal/clipboard/check.sh
 ```
 
-The script looks for `java` on `PATH`, then for Homebrew OpenJDK at
-`/opt/homebrew/opt/openjdk/bin/java`. It uses `TLA2TOOLS_JAR` when set and
-defaults to `~/.local/share/tla2tools/tla2tools.jar`. Get the jar from the
-[official TLA+ tools releases](https://github.com/tlaplus/tlaplus/releases).
-`pnpm test:formal` runs the same script. On machines without a Scratch
-volume, set `COPIED_MD_FORMAL_OUT` to a disposable output directory.
+The script looks for `java` on `PATH` or at Homebrew’s
+`/opt/homebrew/opt/openjdk/bin/java`. Set `TLA2TOOLS_JAR` to the downloaded
+JAR, or place it at `~/.local/share/tla2tools/tla2tools.jar`. [TLA+ tools releases](https://github.com/tlaplus/tlaplus/releases)
+
+`pnpm test:formal` runs the same script. The script uses the mounted Scratch
+volume on macOS by default. Otherwise, set `COPIED_MD_FORMAL_OUT` to a disposable
+output directory.
 
 ## Native clipboard protocols
 

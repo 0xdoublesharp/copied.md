@@ -1,6 +1,6 @@
-# copied.md CLI & MCP
+# copied.md CLI and MCP
 
-`copied.md 2.0` provides a native Rust binary (`crates/copied-cli`, binary name `copied-md`) as well as the Node CLI package (`apps/cli`). Both expose the same commands and stdio MCP server.
+Use `copied-md` to list formats, convert Markdown from stdin or a file, or copy the result to the system clipboard. Run these commands with either the native binary in `crates/copied-cli` or the Node package `@0xdoublesharp/copied-md-cli`.
 
 ```sh
 copied-md targets
@@ -12,8 +12,8 @@ copied-md copy --clipboard --pick
 copied-md mcp
 ```
 
-- Reads stdin or `--file`, writes the requested representation to stdout, and prints diagnostics to stderr.
-- `--json` emits the `schemaVersion: 1` payload (`representations`, `metrics`, `diagnostics`).
-- `copy` writes directly to the native OS clipboard on macOS (`NSPasteboard`), Windows (`OpenClipboard` + `CF_HTML`), and Linux (Wayland / X11) with revision-checked stale-write protection (exit code `3`).
-- `mcp` serves `list_copy_targets` and `convert_markdown` locally over stdio.
-- When invoked via a copy or symlink named `copied-md-pasteboard`, the native binary acts as the drop-in pasteboard helper used by the VS Code extension (`copied.md.app/Contents/Helpers/copied-md-pasteboard`).
+`convert` writes the plain-text representation to stdout by default. Choose another available representation with `--format`, or use `--json` to get the full `schemaVersion: 1` payload with representations, metrics, and diagnostics. Without `--json`, conversion diagnostics go to stderr. `mcp` serves `list_copy_targets` and `convert_markdown` locally over stdio.
+
+The native CLI writes to the macOS pasteboard, the Windows clipboard, and Linux sessions with Wayland data control or X11. With `copy --clipboard`, it checks the revision of the clipboard it read. If it detects a newer copy before writing, it exits with code `3`. A copy or symlink of the native binary named `copied-md-pasteboard` also exposes the helper commands used by the [VS Code extension](../vscode/README.md).
+
+The Node CLI supports `copy` on macOS via `copied-md-pasteboard` on your `PATH`. Set `COPIED_MD_PASTEBOARD` to use a helper at a different path.

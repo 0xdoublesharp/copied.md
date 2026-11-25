@@ -1,30 +1,36 @@
 # copied.md Desktop
 
-The Tauri v2 desktop app starts quietly in the system tray (opening a one-time interactive Welcome guide on first launch). Copy Markdown from any app, then press the global shortcut (`⌃⌘C` on macOS, `Ctrl+Shift+Alt+C` on Windows/Linux) or choose **Copy Markdown As…** from the tray menu.
+Copy Markdown from another app, then press `⌃⌘C` on macOS or `Ctrl+Shift+Alt+C` on Windows or X11. Choose **Copy Markdown As…** from the tray menu to open the picker directly. On Wayland, check your [session capabilities](../../docs/app-store-and-packaging.md#session-capabilities) for clipboard and shortcut support.
 
-## Key capabilities
+## Choose how the shortcut works
 
-- **Spotlight-style floating picker:** opens on the display under your pointer with `1–9` / `⌘1–⌘9` quick keys, instant type-to-filter (`⌘K` or type anywhere), and hover-to-preview showing output length, platform limits, and calm diagnostic notes.
-- **Auto-detect & per-app pins:** automatically chooses the right format for Slack, Telegram, Signal, Discord, Teams, Word, WhatsApp, and Messages, while letting you manage explicit per-app overrides in **Settings…**.
-- **Last-Markdown memory:** re-triggering the shortcut before copying something else reuses your original Markdown source so you can paste the same snippet into multiple apps in different formats.
-- **Copy Rich Text as Markdown:** converts copied HTML from VS Code, Google Docs, MathML, tables, and web pages back to GFM Markdown.
-- **Zero-WebView `CopyOnly` & native HUD toast:** copy-only runs never allocate a WebView and confirm or report errors through a single non-blocking native HUD toast.
+- **Copy Last Used and Show Picker** copies immediately and opens the picker. Choose another format to replace the copy. This is the default.
+- **Show Picker First** opens the picker and waits for you to choose.
+- **Copy Last Used Only** copies immediately without opening the picker.
 
-## Development & packaging
+When the focused app has a visible format pinned, the shortcut uses that format. Otherwise, it tries to detect the app and use a visible matching format before falling back to your last-used format. Manage pins, auto-detection, and format visibility in **Settings…**. If the clipboard still holds the previous conversion, the next copy uses the original Markdown.
 
-Run these commands from `apps/desktop`. The UI has its own pnpm lockfile, and `src-tauri` has its own Cargo lockfile.
+The picker shows the output, character count, and any available platform limits. Hover over a format to preview it, press `1`–`9` to choose a numbered format, or type to filter. Press `⌘K` on macOS or `Ctrl+K` on Windows or Linux to focus the filter. On macOS, the picker opens on the display under the pointer.
+
+To convert copied HTML to GitHub Flavored Markdown, choose **Copy Rich Text as Markdown** from the tray menu.
+
+## Build from source
+
+Install the platform dependencies for Tauri, the Rust toolchain pinned in [rust-toolchain.toml](../../rust-toolchain.toml), and the Node and pnpm versions specified in [package.json](../../package.json). [Tauri prerequisites](https://v2.tauri.app/start/prerequisites/)
+
+Run from `apps/desktop`. The UI and `src-tauri` each have their own lockfile.
 
 ```sh
 pnpm --dir ui --ignore-workspace install --frozen-lockfile
 pnpm --dir ui tauri dev
 ```
 
-Build on each target operating system with `pnpm --dir ui tauri build`. The default targets include NSIS and MSI on Windows, and AppImage, deb, and rpm on Linux. Install both Apple Rust targets before building a universal macOS application bundle:
+Build on the target operating system with `pnpm --dir ui tauri build`. For a universal macOS bundle, install the Apple silicon and Intel Rust targets before building.
 
 ```sh
 pnpm --dir ui tauri build --target universal-apple-darwin --bundles app
 ```
 
-For the Mac App Store, add `--config src-tauri/tauri.appstore.conf.json` and supply your App Store signing identity and provisioning profile in the release configuration. For Developer ID distribution, the default macOS configuration enables hardened runtime and uses the direct-distribution entitlements. See [App Store and Packaging](../../docs/app-store-and-packaging.md).
+Run the built desktop executable with `--self-test` to check isolated clipboard operations, stale-write detection, the copy engine, and the configuration round trip. On macOS, the test also binds and releases temporary F18 and F19 shortcuts.
 
-Run `copied-md --self-test` on the built binary to exercise the isolated clipboard, reject a stale write, verify the copy engine and config round-trip, and (on macOS) bind and release temporary F18/F19 hotkeys.
+See the [packaging guide](../../docs/app-store-and-packaging.md) for signing, installers, and how to bundle the [VS Code pasteboard helper](../vscode/README.md).
