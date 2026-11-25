@@ -1,0 +1,9 @@
+{
+  "name": "@0xdoublesharp/copied-md-shared-icons",
+  "version": "2.0.0-alpha.1",
+  "type": "module",
+  "exports": "./src/index.ts",
+  "files": [
+    "src"
+  ]
+}
