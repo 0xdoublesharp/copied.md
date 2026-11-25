@@ -2,4 +2,6 @@
 
 Select Markdown and choose **Copy Markdown As…**. In a Markdown file, the command also offers to copy the whole document when there is no selection.
 
-Choose **HTML Source** for markup or **Plain Text** for readable text. For rich text on macOS, configure the absolute path to the copied.md pasteboard helper in `copied-md.pasteboardHelper`. VS Code uses its text clipboard when the helper is unavailable.
+Choose **HTML Source** for markup or **Plain Text** for readable text. For rich paste in local VS Code on macOS, install copied.md in **Applications** or your home folder’s **Applications**. VS Code uses the helper bundled with that app automatically. If you keep the helper elsewhere, set its absolute path in `copied-md.pasteboardHelper`. Copies use plain text when rich clipboard access is unavailable.
+
+Use `copied-md.formatVisibility` in VS Code Settings to show or hide formats in **Copy Markdown As…**. For example, `"copied-md.formatVisibility": { "teams": true, "sms": false }` adds Teams and hides SMS in the picker. Word and WhatsApp are also available to enable.

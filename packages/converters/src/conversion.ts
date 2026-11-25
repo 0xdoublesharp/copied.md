@@ -7,7 +7,7 @@ import { renderRichHtml } from './rich-html';
 import { signalSpoilerFallback } from './signal-spoilers';
 import type { ClipboardPayload, Diagnostic } from './types';
 
-export const targets = [
+const targetDefinitions = [
   { id: 'rich-text', label: 'Rich Text', rich: true },
   { id: 'plain-text', label: 'Plain Text', rich: false },
   { id: 'html-source', label: 'HTML Source', rich: false },
@@ -20,9 +20,21 @@ export const targets = [
   { id: 'twitter', label: 'X', rich: false },
   { id: 'sms', label: 'SMS', rich: false },
   { id: 'slack-api', label: 'Slack API (mrkdwn)', rich: false },
+  { id: 'teams', label: 'Teams', rich: true, enabledByDefault: false },
+  { id: 'word', label: 'Word', rich: true, enabledByDefault: false },
+  { id: 'whatsapp', label: 'WhatsApp', rich: false, enabledByDefault: false },
 ] as const;
 
-export type CopyTarget = (typeof targets)[number]['id'];
+export type CopyTarget = (typeof targetDefinitions)[number]['id'];
+
+export interface CopyTargetDefinition {
+  readonly id: CopyTarget;
+  readonly label: string;
+  readonly rich: boolean;
+  readonly enabledByDefault?: boolean;
+}
+
+export const targets: readonly CopyTargetDefinition[] = targetDefinitions;
 
 export interface ConversionOptions {
   sourceUrl?: string;
@@ -66,6 +78,8 @@ export function convertMarkdown(
     ? renderMarkdown(tree, target)
     : renderText(tree, {
         slackApi: target === 'slack-api',
+        slackPaste: target === 'slack-paste',
+        whatsapp: target === 'whatsapp',
         decorativeUnicode:
           options.decorativeUnicode &&
           (target === 'facebook' || target === 'twitter' || target === 'telegram'),
@@ -90,10 +104,12 @@ export function convertMarkdown(
     }
     if (!fallback?.malformed) representations['text/signal'] = html;
   } else if (profile.rich || target === 'html-source') {
+    const destination =
+      target === 'teams' || target === 'word' || target === 'slack-paste' ? target : undefined;
     const html =
       target === 'telegram'
         ? renderText(tree, { telegram: 'html' })
-        : renderRichHtml(tree, options.sourceUrl);
+        : renderRichHtml(tree, options.sourceUrl, destination);
     if (target === 'html-source') representations['text/plain'] = html;
     else representations['text/html'] = html;
   }

@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { setActivePinia, createPinia } from 'pinia';
 import { useSettingsStore } from '@/stores/settings.store';
 import { Platform } from '@0xdoublesharp/copied-md-converters';
+import { visibleFormats } from '@/lib/copy-formats';
 
 // Mock the browser.storage.local API
 const mockStorage: Record<string, unknown> = {};
@@ -78,5 +79,22 @@ describe('useSettingsStore', () => {
     mockStorage['copied-md-settings'] = { defaultPlatform: 'obsolete' };
     await store.load();
     expect(store.defaultPlatform).toBe('telegram');
+  });
+
+  it('keeps one picker format visible and updates a hidden default', async () => {
+    const store = useSettingsStore();
+    store.defaultPlatform = 'signal';
+    store.setFormatVisible('signal', false);
+    expect(store.defaultPlatform).toBe('rich-text');
+    for (const { id } of visibleFormats()) {
+      if (id !== 'rich-text') store.setFormatVisible(id, false);
+    }
+    store.setFormatVisible('rich-text', false);
+    expect(store.formatVisibility['rich-text']).toBeUndefined();
+    expect(store.formats.map(({ id }) => id)).toEqual(['rich-text']);
+    await store.save();
+    expect(mockStorage['copied-md-settings']).toMatchObject({
+      formatVisibility: { signal: false },
+    });
   });
 });

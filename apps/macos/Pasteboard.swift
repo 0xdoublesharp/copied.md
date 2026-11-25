@@ -41,6 +41,13 @@ struct Written: Encodable {
 struct Target: Decodable {
     let id: String
     let label: String
+    let enabledByDefault: Bool?
+
+    init(id: String, label: String, enabledByDefault: Bool? = nil) {
+        self.id = id
+        self.label = label
+        self.enabledByDefault = enabledByDefault
+    }
 }
 
 struct Choice: Encodable {

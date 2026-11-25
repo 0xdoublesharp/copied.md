@@ -8,6 +8,7 @@ import { computed, ref, watch } from 'vue';
 
 export const useUiStore = defineStore('ui', () => {
   const inputMarkdown = ref('');
+  const sourceUrl = ref<string>();
   const decorativeUnicode = ref(false);
   const selectedPlatform = ref<CopyTarget | null>(null);
   const copied = ref(false);
@@ -17,6 +18,7 @@ export const useUiStore = defineStore('ui', () => {
     if (!selectedPlatform.value || !inputMarkdown.value.trim()) return null;
     return convertMarkdown(inputMarkdown.value, selectedPlatform.value, {
       decorativeUnicode: decorativeUnicode.value,
+      sourceUrl: sourceUrl.value,
     });
   });
   const previewText = computed(() => conversionResult.value?.representations['text/plain'] ?? '');
@@ -36,6 +38,7 @@ export const useUiStore = defineStore('ui', () => {
 
   function reset() {
     inputMarkdown.value = '';
+    sourceUrl.value = undefined;
     decorativeUnicode.value = false;
     selectedPlatform.value = null;
     copied.value = false;
@@ -52,6 +55,7 @@ export const useUiStore = defineStore('ui', () => {
 
   return {
     inputMarkdown,
+    sourceUrl,
     decorativeUnicode,
     selectedPlatform,
     copied,

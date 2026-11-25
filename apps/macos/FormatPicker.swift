@@ -6,15 +6,22 @@ struct CopiedFormat {
 }
 
 private let hiddenFormatsKey = "copied-md.pickerHiddenFormats"
+private let shownFormatsKey = "copied-md.pickerShownFormats"
 
 private func hiddenFormats(in defaults: UserDefaults, for targets: [Target]) -> Set<String> {
-    let hidden = Set(defaults.stringArray(forKey: hiddenFormatsKey) ?? [])
+    let shown = Set(defaults.stringArray(forKey: shownFormatsKey) ?? [])
+    let hiddenByDefault = targets.filter { $0.enabledByDefault == false && !shown.contains($0.id) }
+    let hidden = Set(defaults.stringArray(forKey: hiddenFormatsKey) ?? []).union(hiddenByDefault.map(\.id))
     return targets.allSatisfy { hidden.contains($0.id) } ? [] : hidden
 }
 
-func preferredFormat(from targets: [Target], rememberingIn defaults: UserDefaults) -> Target? {
+func visibleFormats(from targets: [Target], rememberingIn defaults: UserDefaults) -> [Target] {
     let hidden = hiddenFormats(in: defaults, for: targets)
-    let visible = targets.filter { !hidden.contains($0.id) }
+    return targets.filter { !hidden.contains($0.id) }
+}
+
+func preferredFormat(from targets: [Target], rememberingIn defaults: UserDefaults) -> Target? {
+    let visible = visibleFormats(from: targets, rememberingIn: defaults)
     guard !visible.isEmpty else { return nil }
     return visible[selectionIndex(in: visible, rememberingIn: defaults)]
 }
@@ -26,9 +33,9 @@ private func selectionIndex(in visible: [Target], rememberingIn defaults: UserDe
 
 @MainActor
 func choose(_ targets: [Target], rememberingIn defaults: UserDefaults = preferences,
-            copied: CopiedFormat? = nil) throws -> Choice {
+            copied: CopiedFormat? = nil, suggestedTarget: String? = nil) throws -> Choice {
     guard !targets.isEmpty else { throw Failure("There are no available formats.") }
-    let picker = FormatPicker(targets: targets, defaults: defaults, copied: copied)
+    let picker = FormatPicker(targets: targets, defaults: defaults, copied: copied, suggestedTarget: suggestedTarget)
     let app = NSApplication.shared
     app.setActivationPolicy(.accessory)
     picker.window.makeKeyAndOrderFront(nil)
@@ -50,6 +57,7 @@ private final class FormatPicker: NSObject {
     private let targets: [Target]
     private let defaults: UserDefaults
     private let copied: CopiedFormat?
+    private let suggestedTarget: String?
     private var columns: Int
     private var hidden: Set<String>
     private var selected: Target
@@ -57,10 +65,11 @@ private final class FormatPicker: NSObject {
     let window: NSWindow = FormatPickerWindow(contentRect: .zero, styleMask: [.titled, .fullSizeContentView],
                                                backing: .buffered, defer: false)
 
-    init(targets: [Target], defaults: UserDefaults, copied: CopiedFormat?) {
+    init(targets: [Target], defaults: UserDefaults, copied: CopiedFormat?, suggestedTarget: String?) {
         self.targets = targets
         self.defaults = defaults
         self.copied = copied
+        self.suggestedTarget = suggestedTarget
         let saved = defaults.integer(forKey: columnKey)
         columns = columnOptions.contains(saved) ? saved : 4
         hidden = hiddenFormats(in: defaults, for: targets)
@@ -77,7 +86,8 @@ private final class FormatPicker: NSObject {
 
     private func rebuild() {
         let visible = targets.filter { !hidden.contains($0.id) }
-        let selectedIndex = selectionIndex(in: visible, rememberingIn: defaults)
+        let selectedIndex = visible.firstIndex { $0.id == (copied?.target.id ?? suggestedTarget) }
+            ?? selectionIndex(in: visible, rememberingIn: defaults)
         selected = visible[selectedIndex]
 
         let inset: CGFloat = 24
@@ -200,7 +210,7 @@ private final class FormatPicker: NSObject {
         formatsMenu.autoenablesItems = false
         for format in targets {
             let option = NSMenuItem(title: format.label, action: #selector(toggleFormat(_:)), keyEquivalent: "")
-            option.representedObject = format.id
+            option.representedObject = format
             option.target = self
             let isShown = !hidden.contains(format.id)
             option.state = isShown ? .on : .off
@@ -221,9 +231,20 @@ private final class FormatPicker: NSObject {
     }
 
     @objc private func toggleFormat(_ item: NSMenuItem) {
-        let id = item.representedObject as! String // Set by settingsButton.
-        if item.state == .on { hidden.insert(id) } else { hidden.remove(id) }
-        defaults.set(hidden.sorted(), forKey: hiddenFormatsKey)
+        let format = item.representedObject as! Target // Set by settingsButton.
+        let id = format.id
+        var explicitlyHidden = Set(defaults.stringArray(forKey: hiddenFormatsKey) ?? [])
+        var explicitlyShown = Set(defaults.stringArray(forKey: shownFormatsKey) ?? [])
+        if item.state == .on {
+            explicitlyShown.remove(id)
+            if format.enabledByDefault != false { explicitlyHidden.insert(id) }
+        } else {
+            explicitlyHidden.remove(id)
+            if format.enabledByDefault == false { explicitlyShown.insert(id) }
+        }
+        defaults.set(explicitlyHidden.sorted(), forKey: hiddenFormatsKey)
+        defaults.set(explicitlyShown.sorted(), forKey: shownFormatsKey)
+        hidden = hiddenFormats(in: defaults, for: targets)
         rebuild()
     }
 

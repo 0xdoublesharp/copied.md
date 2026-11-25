@@ -8,6 +8,7 @@ import { writeWithFallback } from '@/lib/clipboard-writer';
 import { STORAGE_KEYS } from '@/lib/constants';
 
 const ui = useUiStore();
+const props = defineProps<{ embedded?: boolean }>();
 const settings = useSettingsStore();
 const status = ref('');
 const copyFailed = ref(false);
@@ -35,6 +36,7 @@ async function copyToClipboard() {
     status.value = outcome.fallback ? 'Copied as plain text.' : 'Copied.';
     ui.markCopied();
     if (
+      !props.embedded &&
       settings.autoClose &&
       !outcome.fallback &&
       !result.diagnostics.some((item) => item.severity === 'warning')

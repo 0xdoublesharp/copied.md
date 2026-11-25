@@ -1,18 +1,28 @@
 import { describe, it, expect, vi } from 'vitest';
-import { targets } from '@0xdoublesharp/copied-md-converters';
 import { MENU_PARENT_ID, STORAGE_KEYS } from '@/lib/constants';
+import { visibleFormats } from '@/lib/copy-formats';
 
 type Click = (
   info: { menuItemId: string; frameId: number; selectionText: string },
   tab: { id: number },
 ) => void;
 
+const events = {
+  permissions: { onAdded: { addListener: vi.fn() }, onRemoved: { addListener: vi.fn() } },
+  startup: { addListener: vi.fn() },
+  storageChanged: { addListener: vi.fn() },
+};
+
 describe('Browser selection copy', () => {
   it('registers all targets and converts the live selection from its frame', async () => {
-    let install: (() => void) | undefined;
+    const install: (() => void)[] = [];
     let click: Click | undefined;
     const create = vi.fn();
     const status = vi.fn();
+    const get = vi.fn(async (): Promise<Record<string, unknown>> => ({}));
+    const removeAll = vi.fn(async () => undefined);
+    get.mockRejectedValueOnce(new Error('Storage unavailable'));
+    removeAll.mockRejectedValueOnce(new Error('Menus busy'));
     let injected = false;
     const executeScript = vi.fn(async () => {
       injected = true;
@@ -26,17 +36,19 @@ describe('Browser selection copy', () => {
     vi.stubGlobal('defineBackground', (callback: () => void) => callback);
     vi.stubGlobal('browser', {
       scripting: { executeScript },
+      permissions: events.permissions,
       runtime: {
         getManifest: () => ({ manifest_version: 3 }),
+        onStartup: events.startup,
         onInstalled: {
           addListener: (callback: () => void) => {
-            install = callback;
+            install.push(callback);
           },
         },
       },
       commands: { onCommand: { addListener: vi.fn() } },
       contextMenus: {
-        removeAll: vi.fn(async () => undefined),
+        removeAll,
         create,
         onClicked: {
           addListener: (callback: Click) => {
@@ -45,15 +57,22 @@ describe('Browser selection copy', () => {
         },
       },
       tabs: { sendMessage },
-      storage: { local: { get: vi.fn(async () => ({})), set: vi.fn(async () => undefined) } },
+      storage: {
+        local: { get, set: vi.fn(async () => undefined) },
+        onChanged: events.storageChanged,
+      },
       action: { setBadgeText: vi.fn(), setTitle: status },
     });
     try {
       const background = (await import('@/entrypoints/background')).default;
       (background as unknown as () => void)();
-      install?.();
-      await vi.waitFor(() => expect(create).toHaveBeenCalledTimes(targets.length + 1));
+      install.forEach((callback) => callback());
+      await vi.waitFor(() => expect(removeAll).toHaveBeenCalledOnce());
+      expect(create).not.toHaveBeenCalled();
+      install.forEach((callback) => callback());
+      await vi.waitFor(() => expect(create).toHaveBeenCalledTimes(visibleFormats().length + 1));
       expect(create).toHaveBeenCalledWith(expect.objectContaining({ id: MENU_PARENT_ID }));
+      expect(create).not.toHaveBeenCalledWith(expect.objectContaining({ id: 'copied-md-teams' }));
       click?.(
         { menuItemId: 'copied-md-rich-text', frameId: 7, selectionText: 'flattened fallback' },
         { id: 12 },
@@ -75,6 +94,19 @@ describe('Browser selection copy', () => {
         }),
         { frameId: 7 },
       );
+      create.mockClear();
+      const changed = events.storageChanged.addListener.mock.lastCall![0];
+      changed({}, 'local');
+      changed({ [STORAGE_KEYS.SETTINGS]: {} }, 'sync');
+      expect(create).not.toHaveBeenCalled();
+      get.mockResolvedValue({
+        [STORAGE_KEYS.SETTINGS]: { formatVisibility: { signal: false, teams: true } },
+      });
+      changed({ [STORAGE_KEYS.SETTINGS]: {} }, 'local');
+      await vi.waitFor(() =>
+        expect(create).toHaveBeenCalledWith(expect.objectContaining({ id: 'copied-md-teams' })),
+      );
+      expect(create).not.toHaveBeenCalledWith(expect.objectContaining({ id: 'copied-md-signal' }));
     } finally {
       vi.unstubAllGlobals();
     }
@@ -96,9 +128,11 @@ describe('Browser selection copy', () => {
     const inject = vi.fn();
     vi.stubGlobal('defineBackground', (callback: () => void) => callback);
     vi.stubGlobal('browser', {
+      permissions: events.permissions,
       runtime: {
         getManifest: () => ({ manifest_version: manifest }),
         onInstalled: { addListener: vi.fn() },
+        onStartup: events.startup,
       },
       commands: {
         onCommand: {
@@ -115,7 +149,7 @@ describe('Browser selection copy', () => {
         },
       },
       tabs: { sendMessage: send, executeScript: inject, query },
-      storage: { local: { get, set } },
+      storage: { local: { get, set }, onChanged: events.storageChanged },
       browserAction: { setBadgeText: vi.fn(), setTitle: status },
     });
     const background = (await import('@/entrypoints/background')).default;

@@ -1,13 +1,19 @@
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { nextTick } from 'vue';
 import { STORAGE_KEYS } from '@/lib/constants';
+import { visibleFormats } from '@/lib/copy-formats';
 
-const { set, get, writeWithFallback } = vi.hoisted(() => ({
+const { set, get, writeWithFallback, contains, request, remove } = vi.hoisted(() => ({
   set: vi.fn(),
   get: vi.fn(),
   writeWithFallback: vi.fn(),
+  contains: vi.fn(),
+  request: vi.fn(),
+  remove: vi.fn(),
 }));
-vi.mock('wxt/browser', () => ({ browser: { storage: { local: { set, get } } } }));
+vi.mock('wxt/browser', () => ({
+  browser: { storage: { local: { set, get } }, permissions: { contains, request, remove } },
+}));
 vi.mock('@/lib/clipboard-writer', () => ({ writeWithFallback }));
 
 function button(label: string) {
@@ -16,6 +22,13 @@ function button(label: string) {
   );
   if (!found) throw new Error('Missing popup button ' + label);
   return found;
+}
+
+function checkbox(label: string) {
+  const found = [...document.querySelectorAll('label')].find(
+    (element) => element.textContent?.trim() === label,
+  );
+  return found!.querySelector<HTMLInputElement>('input[type=checkbox]')!;
 }
 
 async function paste(value: string) {
@@ -34,9 +47,13 @@ async function open() {
 beforeEach(() => {
   vi.resetAllMocks();
   vi.resetModules();
-  vi.stubGlobal('browser', { storage: { local: { set, get } } });
+  vi.stubGlobal('browser', {
+    storage: { local: { set, get } },
+    permissions: { contains, request, remove },
+  });
   set.mockResolvedValue(undefined);
   get.mockResolvedValue({});
+  contains.mockResolvedValue(false);
   writeWithFallback.mockResolvedValue({ fallback: false, types: ['text/plain', 'text/html'] });
   vi.spyOn(window, 'close').mockImplementation(() => undefined);
 });
@@ -147,10 +164,8 @@ it('saves settings changes and returns to the converter', async () => {
   const select = document.querySelector('select')!;
   select.value = 'telegram';
   select.dispatchEvent(new Event('change'));
-  const [notifications, autoClose] =
-    document.querySelectorAll<HTMLInputElement>('input[type=checkbox]');
-  notifications.click();
-  autoClose.click();
+  checkbox('Show notifications').click();
+  checkbox('Auto-close after copy').click();
   await vi.waitFor(() =>
     expect(set).toHaveBeenCalledWith({
       [STORAGE_KEYS.SETTINGS]: {
@@ -167,4 +182,98 @@ it('saves settings changes and returns to the converter', async () => {
   button('Copy to Clipboard').click();
   await vi.waitFor(() => expect(document.querySelector('[role=status]')).not.toBeNull());
   expect(window.close).not.toHaveBeenCalled();
+});
+
+it('hides a format saved as disabled and uses the first visible default', async () => {
+  get.mockResolvedValue({
+    [STORAGE_KEYS.SETTINGS]: { defaultPlatform: 'signal', formatVisibility: { signal: false } },
+  });
+  await open();
+  expect(
+    [...document.querySelectorAll('button')].map((element) => element.textContent?.trim()),
+  ).not.toContain('Signal');
+  button('Settings').click();
+  await nextTick();
+  checkbox('Signal').click();
+  await vi.waitFor(() =>
+    expect(set).toHaveBeenLastCalledWith({
+      [STORAGE_KEYS.SETTINGS]: expect.objectContaining({ formatVisibility: { signal: true } }),
+    }),
+  );
+  button('Convert').click();
+  await nextTick();
+  expect(button('Signal')).toBeDefined();
+});
+
+it('requests each chat site only when enabled and handles revoked or denied access', async () => {
+  const granted = new Set(['https://claude.ai/*']);
+  contains.mockImplementation(async ({ origins }: { origins: string[] }) =>
+    granted.has(origins[0]),
+  );
+  await open();
+  button('Settings').click();
+  await vi.waitFor(() => expect(checkbox('Claude').checked).toBe(true));
+  expect(checkbox('ChatGPT').checked).toBe(false);
+  expect(request).not.toHaveBeenCalled();
+  request
+    .mockResolvedValueOnce(false)
+    .mockImplementationOnce(async ({ origins }: { origins: string[] }) => {
+      granted.add(origins[0]);
+      return true;
+    });
+  checkbox('ChatGPT').click();
+  await nextTick();
+  await vi.waitFor(() => expect(checkbox('ChatGPT').checked).toBe(false));
+  checkbox('ChatGPT').click();
+  await nextTick();
+  await vi.waitFor(() => {
+    expect(checkbox('ChatGPT').checked).toBe(true);
+    expect(checkbox('ChatGPT').closest('fieldset')?.disabled).toBe(false);
+  });
+  expect(request).toHaveBeenLastCalledWith({ origins: ['https://chatgpt.com/*'] });
+  remove
+    .mockResolvedValueOnce(false)
+    .mockRejectedValueOnce(new Error('denied'))
+    .mockImplementationOnce(async ({ origins }: { origins: string[] }) =>
+      granted.delete(origins[0]),
+    );
+  checkbox('Claude').click();
+  await nextTick();
+  await vi.waitFor(() => {
+    expect(checkbox('Claude').checked).toBe(true);
+    expect(checkbox('Claude').closest('fieldset')?.disabled).toBe(false);
+  });
+  checkbox('Claude').click();
+  await vi.waitFor(() =>
+    expect(document.querySelector('[role=alert]')?.textContent).toContain(
+      'Could not change access to Claude.',
+    ),
+  );
+  expect(checkbox('Claude').checked).toBe(true);
+  checkbox('Claude').click();
+  await vi.waitFor(() => expect(checkbox('Claude').checked).toBe(false));
+  expect(remove).toHaveBeenLastCalledWith({ origins: ['https://claude.ai/*'] });
+});
+
+it('reports an unavailable chat permission state', async () => {
+  contains.mockRejectedValueOnce(new Error('unavailable'));
+  await open();
+  button('Settings').click();
+  await vi.waitFor(() =>
+    expect(document.querySelector('[role=alert]')?.textContent).toContain('Could not check access'),
+  );
+});
+
+it('keeps the last visible format selected and editable formats enabled', async () => {
+  const formatVisibility = Object.fromEntries(
+    visibleFormats()
+      .filter(({ id }) => id !== 'rich-text')
+      .map(({ id }) => [id, false]),
+  );
+  get.mockResolvedValue({ [STORAGE_KEYS.SETTINGS]: { formatVisibility } });
+  await open();
+  button('Settings').click();
+  await nextTick();
+  expect(checkbox('Rich Text').disabled).toBe(true);
+  expect(checkbox('Telegram').disabled).toBe(false);
 });

@@ -124,11 +124,20 @@
     "configuration": {
       "title": "copied.md",
       "properties": {
+        "copied-md.formatVisibility": {
+          "type": "object",
+          "default": {},
+          "scope": "application",
+          "additionalProperties": {
+            "type": "boolean"
+          },
+          "markdownDescription": "Choose formats for **Copy Markdown As…**. Use a format ID such as `teams`, `word`, or `whatsapp` with `true` to show it or `false` to hide it."
+        },
         "copied-md.pasteboardHelper": {
           "type": "string",
           "default": "",
           "scope": "application",
-          "description": "Absolute path to the copied-md macOS pasteboard helper for Rich Text."
+          "description": "Override with the absolute path to a macOS pasteboard helper. Leave empty to use the helper bundled with the copied.md Mac app."
         }
       }
     }

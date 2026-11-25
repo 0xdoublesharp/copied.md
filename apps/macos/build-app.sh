@@ -7,6 +7,12 @@ output=${COPIED_MD_APP_OUT:-$repo_dir/build/portable}
 runtime=${COPIED_MD_NODE_CACHE:-$repo_dir/build/macos-runtimes}
 version=24.22.1
 identity=${COPIED_MD_SIGN_IDENTITY:--}
+notary_profile=${COPIED_MD_NOTARY_PROFILE:-}
+
+if [ -n "$notary_profile" ] && [ "$identity" = "-" ]; then
+  printf '%s\n' 'Notarization requires a Developer ID Application identity in COPIED_MD_SIGN_IDENTITY.' >&2
+  exit 1
+fi
 
 mkdir -p "$output" "$runtime"
 output=$(CDPATH= cd -- "$output" && pwd)
@@ -59,8 +65,15 @@ for cpu in arm64 x86_64; do
     "$source_dir/FormatPicker.swift" "$source_dir/FormatIcons.swift" \
     "$source_dir/ConverterRuntime.swift" "$source_dir/DesktopApp.swift" \
     -o "$stage/copied-md-$cpu"
+  xcrun swiftc -parse-as-library -O -target "$cpu-apple-macos13.5" \
+    -module-cache-path "$stage/module-cache" \
+    "$source_dir/Pasteboard.swift" "$source_dir/FormatPicker.swift" \
+    "$source_dir/FormatIcons.swift" "$source_dir/PasteboardCommand.swift" \
+    -o "$stage/copied-md-pasteboard-$cpu"
 done
 xcrun lipo -create "$stage/copied-md-arm64" "$stage/copied-md-x86_64" -output "$app/Contents/MacOS/copied-md"
+xcrun lipo -create "$stage/copied-md-pasteboard-arm64" "$stage/copied-md-pasteboard-x86_64" \
+  -output "$app/Contents/Helpers/copied-md-pasteboard"
 
 mkdir "$stage/AppIcon.iconset"
 icon="$repo_dir/assets/copied-md.png"
@@ -73,14 +86,44 @@ iconutil -c icns "$stage/AppIcon.iconset" -o "$app/Contents/Resources/AppIcon.ic
 
 if [ "$identity" = "-" ]; then
   codesign --force --sign - "$app/Contents/Helpers/node"
+  codesign --force --sign - "$app/Contents/Helpers/copied-md-pasteboard"
   codesign --force --sign - "$app"
 else
   codesign --force --sign "$identity" --options runtime --timestamp \
     --entitlements "$source_dir/Node.entitlements" "$app/Contents/Helpers/node"
+  codesign --force --sign "$identity" --options runtime --timestamp "$app/Contents/Helpers/copied-md-pasteboard"
   codesign --force --sign "$identity" --options runtime --timestamp "$app"
 fi
 plutil -lint "$app/Contents/Info.plist"
+for executable in "$app/Contents/MacOS/copied-md" "$app/Contents/Helpers/"*; do
+  xcrun lipo "$executable" -verify_arch arm64 x86_64
+done
 codesign --verify --deep --strict "$app"
+
+if [ -n "$notary_profile" ]; then
+  if ! codesign --display --verbose=2 "$app" 2>&1 | grep -q '^Authority=Developer ID Application:'; then
+    printf '%s\n' 'The app must be signed with a Developer ID Application certificate to notarize it.' >&2
+    exit 1
+  fi
+  submission="$stage/notary-submission.zip"
+  result="$stage/notary-result.json"
+  ditto -c -k --keepParent "$app" "$submission"
+  if ! xcrun notarytool submit "$submission" --keychain-profile "$notary_profile" --wait \
+    --output-format json > "$result" || [ "$(plutil -extract status raw -o - "$result")" != Accepted ]; then
+    cat "$result" >&2
+    printf '%s\n' 'Apple did not accept the notarization submission.' >&2
+    exit 1
+  fi
+  xcrun stapler staple "$app"
+  xcrun stapler validate "$app"
+  codesign --verify --deep --strict "$app"
+  if command -v syspolicy_check >/dev/null 2>&1; then
+    syspolicy_check distribution "$app"
+  else
+    spctl --assess --type execute "$app"
+  fi
+fi
+
 ditto -c -k --keepParent "$app" "$stage/copied-md-macos-universal.zip"
 mv "$app" "$stage/copied-md-macos-universal.zip" "$output/"
 printf '%s\n' "$output/copied.md.app" "$output/copied-md-macos-universal.zip"

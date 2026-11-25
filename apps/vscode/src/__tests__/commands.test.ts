@@ -1,5 +1,6 @@
 import { afterEach, describe, it, expect, vi, beforeEach } from 'vitest';
 import { EventEmitter } from 'node:events';
+import { targets } from '@0xdoublesharp/copied-md-converters';
 import { activate, deactivate } from '../extension';
 
 const mocks = vi.hoisted(() => ({
@@ -13,10 +14,19 @@ const mocks = vi.hoisted(() => ({
   remote: undefined as string | undefined,
   uiKind: 1,
   setting: vi.fn(),
+  visibility: vi.fn(),
   spawn: vi.fn(),
+  stat: vi.fn(),
+  access: vi.fn(),
 }));
 
 vi.mock('node:child_process', () => ({ spawn: mocks.spawn }));
+vi.mock('node:fs/promises', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('node:fs/promises')>()),
+  stat: mocks.stat,
+  access: mocks.access,
+}));
+vi.mock('node:os', () => ({ homedir: () => '/Local User' }));
 
 vi.mock('vscode', () => ({
   commands: {
@@ -35,7 +45,11 @@ vi.mock('vscode', () => ({
     showQuickPick: mocks.picker,
   },
   UIKind: { Desktop: 1, Web: 2 },
-  workspace: { getConfiguration: () => ({ get: mocks.setting }) },
+  workspace: {
+    getConfiguration: () => ({
+      get: (key: string) => (key === 'formatVisibility' ? mocks.visibility() : mocks.setting()),
+    }),
+  },
   env: {
     get remoteName() {
       return mocks.remote;
@@ -83,6 +97,8 @@ describe('VS Code copy commands', () => {
     mocks.remote = undefined;
     mocks.uiKind = 1;
     mocks.setting.mockReturnValue('/path/clipboard');
+    mocks.visibility.mockReturnValue({});
+    mocks.stat.mockRejectedValue(new Error('missing'));
   });
   afterEach(() => vi.unstubAllGlobals());
 
@@ -134,6 +150,58 @@ describe('VS Code copy commands', () => {
     expect(mocks.write).not.toHaveBeenCalled();
   });
 
+  it.each([
+    {
+      installedAt: '/Local User/Applications',
+      systemPathChecked: false,
+      userEntryIsFile: true,
+    },
+    {
+      installedAt: '/Applications',
+      systemPathChecked: true,
+      userEntryIsFile: false,
+    },
+    {
+      installedAt: '/Applications',
+      systemPathChecked: true,
+      userEntryIsFile: true,
+    },
+  ])(
+    'discovers the bundled helper in $installedAt without configuration',
+    async ({ installedAt, systemPathChecked, userEntryIsFile }) => {
+      vi.stubGlobal('process', Object.create(process, { platform: { value: 'darwin' } }));
+      mocks.setting.mockReturnValue('');
+      const filename = '/copied.md.app/Contents/Helpers/copied-md-pasteboard';
+      const userPath = '/Local User/Applications' + filename;
+      const systemPath = '/Applications' + filename;
+      mocks.stat.mockImplementation(async (path: string) => ({
+        isFile: () => path === systemPath || userEntryIsFile,
+      }));
+      mocks.access.mockImplementation(async (path: string) => {
+        if (path !== installedAt + filename) throw new Error('not executable');
+      });
+      const child = new EventEmitter();
+      const end = vi.fn(() => child.emit('close', 0));
+      mocks.spawn.mockReturnValue(
+        Object.assign(child, { stdin: Object.assign(new EventEmitter(), { end }) }),
+      );
+      mocks.editor = editor([], 'markdown', '**Ready**');
+
+      await handler('copied-md.copyTo.slack')();
+
+      expect(mocks.stat.mock.calls).toEqual(
+        systemPathChecked ? [[userPath], [systemPath]] : [[userPath]],
+      );
+      expect(mocks.spawn).toHaveBeenCalledWith(
+        installedAt + filename,
+        ['write'],
+        expect.anything(),
+      );
+      expect(mocks.info).toHaveBeenCalledWith('Copied as Slack.');
+      expect(mocks.write).not.toHaveBeenCalled();
+    },
+  );
+
   it('does not copy a non-Markdown document without a selection', async () => {
     mocks.editor = editor([], 'typescript', 'const a = 1');
     await handler('copied-md.copyAs')();
@@ -145,6 +213,38 @@ describe('VS Code copy commands', () => {
     mocks.editor = editor([], 'markdown', '# Notes');
     await handler('copied-md.copyAs')();
     expect(mocks.picker).toHaveBeenCalled();
+    expect(mocks.write).not.toHaveBeenCalled();
+  });
+
+  it('keeps specialist formats out of the picker until enabled', async () => {
+    mocks.editor = editor([], 'markdown', '# Notes');
+    await handler('copied-md.copyAs')();
+    const items = mocks.picker.mock.calls[0][0];
+    expect(items).toContainEqual({ label: 'Slack', target: 'slack-paste' });
+    expect(items.map(({ target }: { target: string }) => target)).not.toContain('teams');
+    expect(items.map(({ target }: { target: string }) => target)).not.toContain('word');
+    expect(items.map(({ target }: { target: string }) => target)).not.toContain('whatsapp');
+  });
+
+  it('shows an enabled specialist and hides a disabled default', async () => {
+    mocks.editor = editor([], 'markdown', '**Ready**');
+    mocks.visibility.mockReturnValue({ whatsapp: true, 'slack-paste': false });
+    mocks.picker.mockResolvedValue({ target: 'whatsapp' });
+
+    await handler('copied-md.copyAs')();
+
+    const items = mocks.picker.mock.calls[0][0];
+    expect(items).toContainEqual({ label: 'WhatsApp', target: 'whatsapp' });
+    expect(items).not.toContainEqual({ label: 'Slack', target: 'slack-paste' });
+    expect(mocks.write).toHaveBeenCalledWith('*Ready*');
+  });
+
+  it('explains how to restore the picker when every format is hidden', async () => {
+    mocks.editor = editor([], 'markdown', '# Notes');
+    mocks.visibility.mockReturnValue(Object.fromEntries(targets.map(({ id }) => [id, false])));
+    await handler('copied-md.copyAs')();
+    expect(mocks.warning).toHaveBeenCalledWith('Enable a copied.md format in Settings.');
+    expect(mocks.picker).not.toHaveBeenCalled();
     expect(mocks.write).not.toHaveBeenCalled();
   });
 

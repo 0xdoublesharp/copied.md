@@ -1,5 +1,6 @@
 import type { PhrasingContent, Root, RootContent } from 'mdast';
 import { visit } from 'unist-util-visit';
+import { tableAsText } from './clipboard-tables';
 import { footnoteNumbers, htmlText } from './document';
 import { signalSpanOpen, spoilerOpen } from './signal-spoilers';
 import { toBold, toBoldItalic, toItalic } from './unicode';
@@ -7,6 +8,8 @@ import { toBold, toBoldItalic, toItalic } from './unicode';
 type Style = { bold?: boolean; italic?: boolean; strike?: boolean; insideLink?: boolean };
 interface TextOptions {
   slackApi?: boolean;
+  slackPaste?: boolean;
+  whatsapp?: boolean;
   decorativeUnicode?: boolean;
   telegram?: 'plain' | 'rtf' | 'html';
   signal?: boolean;
@@ -30,7 +33,8 @@ function telegramHtmlLineBreaks(text: string): string {
 
 export function renderText(tree: Root, options: TextOptions = {}): string {
   const notes = footnoteNumbers(tree);
-  const { slackApi, decorativeUnicode, telegram, signal } = options;
+  const { slackApi, slackPaste, whatsapp, decorativeUnicode, telegram, signal } = options;
+  const chatMarkup = slackApi || whatsapp;
   const rtf = telegram === 'rtf';
   const html = telegram === 'html' || signal;
 
@@ -86,7 +90,10 @@ export function renderText(tree: Root, options: TextOptions = {}): string {
   }
 
   function rawBlock(source: string): string {
-    if (!signal) return escape(htmlText(source)).trimEnd();
+    if (!signal) {
+      const plainOptions = slackPaste ? { renderTable: tableAsText } : undefined;
+      return escape(htmlText(source, plainOptions)).trimEnd();
+    }
     if (/^<\/span\s*>$/i.test(source.trim())) return '</span>';
     return htmlText(source, {
       escapeText: escape,
@@ -113,23 +120,23 @@ export function renderText(tree: Root, options: TextOptions = {}): string {
           case 'strong': {
             const value = inline(node.children, { ...style, bold: true });
             if (html) return '<strong>' + value + '</strong>';
-            return slackApi ? '*' + value + '*' : value;
+            return chatMarkup ? '*' + value + '*' : value;
           }
           case 'emphasis': {
             const value = inline(node.children, { ...style, italic: true });
             if (html) return '<em>' + value + '</em>';
-            return slackApi ? '_' + value + '_' : value;
+            return chatMarkup ? '_' + value + '_' : value;
           }
           case 'delete': {
             const value = inline(node.children, { ...style, strike: true });
             if (html) return '<s>' + value + '</s>';
-            return slackApi ? '~' + value + '~' : value;
+            return chatMarkup ? '~' + value + '~' : value;
           }
           case 'inlineCode':
             if (signal) return '<span data-monospace="true">' + escape(node.value) + '</span>';
             if (html) return '<code>' + escape(node.value) + '</code>';
             if (rtf) return '{\\f1 ' + escape(node.value) + '}';
-            return slackApi && !node.value.includes('`')
+            return chatMarkup && !node.value.includes('`')
               ? '`' + escape(node.value) + '`'
               : escape(node.value);
           case 'link':
@@ -165,7 +172,7 @@ export function renderText(tree: Root, options: TextOptions = {}): string {
       case 'heading': {
         const value = inline(node.children, { bold: true });
         if (html) return '<strong>' + value + '</strong>';
-        return slackApi ? '*' + value + '*' : value;
+        return chatMarkup ? '*' + value + '*' : value;
       }
       case 'blockquote': {
         const content = blocks(node.children);
@@ -181,13 +188,15 @@ export function renderText(tree: Root, options: TextOptions = {}): string {
         if (signal) return '<span data-monospace="true">' + escape(node.value) + '</span>';
         if (html) return '<pre>' + escape(node.value).replaceAll('\n', '&#10;') + '</pre>';
         if (rtf) return '{\\f1 ' + escape(node.value) + '}';
+        if (whatsapp && !node.value.includes('```')) return '```' + node.value + '```';
         return slackApi && !node.value.includes('```')
           ? '```\n' + escape(node.value) + '\n```'
           : escape(node.value);
       case 'list':
         return node.children
           .map((item, index) => {
-            const marker = node.ordered ? (node.start ?? 1) + index + '. ' : '• ';
+            const bullet = whatsapp ? '- ' : '• ';
+            const marker = node.ordered ? (node.start ?? 1) + index + '. ' : bullet;
             const task = item.checked == null ? '' : item.checked ? '[x] ' : '[ ] ';
             const [first, ...lines] = blocks(item.children, item.spread ? '\n\n' : '\n').split(
               '\n',

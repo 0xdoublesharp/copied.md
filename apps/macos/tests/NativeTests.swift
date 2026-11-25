@@ -260,7 +260,7 @@ private func buttons(in view: NSView) -> [NSButton] {
 
 @MainActor
 private func inspectPicker(
-    _ targets: [Target], defaults: UserDefaults, copied: CopiedFormat? = nil,
+    _ targets: [Target], defaults: UserDefaults, copied: CopiedFormat? = nil, suggestedTarget: String? = nil,
     inspect: @escaping @MainActor (NSWindow, NSView) throws -> Void
 ) throws -> Choice {
     var failure: Error?
@@ -280,7 +280,7 @@ private func inspectPicker(
             NSApp.abortModal()
         }
     }
-    let result = try choose(targets, rememberingIn: defaults, copied: copied)
+    let result = try choose(targets, rememberingIn: defaults, copied: copied, suggestedTarget: suggestedTarget)
     if let failure { throw failure }
     return result
 }
@@ -416,6 +416,39 @@ private func pickerLayoutInvariants(_ defaults: UserDefaults, targets: [Target])
 }
 
 @MainActor
+private func specialistVisibilityInvariants(_ defaults: UserDefaults) throws {
+    let targets = try JSONDecoder().decode([Target].self, from: Data("""
+        [{"id":"teams","label":"Teams","enabledByDefault":false},{"id":"plain-text","label":"Plain Text"}]
+        """.utf8))
+    defaults.removeObject(forKey: preferenceKey)
+    defer { defaults.removeObject(forKey: "copied-md.pickerShownFormats") }
+    try expect(preferredFormat(from: targets, rememberingIn: defaults)?.id == "plain-text",
+               "A specialist format appeared before it was enabled.")
+    _ = try inspectPicker(targets, defaults: defaults, suggestedTarget: "teams") { window, content in
+        guard let settings = content.subviews.compactMap({ $0 as? NSPopUpButton }).first,
+              let teams = settings.menu?.item(withTitle: "Show Formats")?.submenu?.item(withTitle: "Teams"),
+              let action = teams.action else { throw Failure("Teams is missing from Show Formats.") }
+        try expect(teams.state == .off && window.defaultButtonCell?.title == "Copy Plain Text",
+                   "A hidden specialist format was selected.")
+        try expect(NSApp.sendAction(action, to: teams.target, from: teams), "Could not turn on Teams.")
+        try expect(window.defaultButtonCell?.title == "Copy Teams", "The enabled suggestion was not selected.")
+        NSApp.abortModal()
+    }
+    try expect(visibleFormats(from: targets, rememberingIn: defaults).map(\.id) == ["teams", "plain-text"],
+               "The enabled specialist setting did not persist.")
+    _ = try inspectPicker(targets, defaults: defaults) { _, content in
+        guard let settings = content.subviews.compactMap({ $0 as? NSPopUpButton }).first,
+              let teams = settings.menu?.item(withTitle: "Show Formats")?.submenu?.item(withTitle: "Teams"),
+              let action = teams.action else { throw Failure("Enabled Teams is missing from Show Formats.") }
+        try expect(teams.state == .on && NSApp.sendAction(action, to: teams.target, from: teams),
+                   "Could not hide the enabled specialist format.")
+        NSApp.abortModal()
+    }
+    try expect(visibleFormats(from: targets, rememberingIn: defaults).map(\.id) == ["plain-text"],
+               "The specialist was still visible after turning it off.")
+}
+
+@MainActor
 private func helperInvariants() throws {
     let board = NSPasteboard.withUniqueName()
     defer { board.releaseGlobally() }
@@ -465,7 +498,7 @@ private func shortcutCopyInvariants(_ defaults: UserDefaults) async throws {
     var competingCopy = false
     var alerts: [String] = []
     let desktop = DesktopApp(runtime: TestRuntime(warning: false, formats: formats), defaults: defaults,
-                             clipboardDefaults: defaults, clipboard: { board }, chooseFormat: { _, copied in
+                             clipboardDefaults: defaults, clipboard: { board }, chooseFormat: { _, copied, _ in
         visited += 1
         try expect(copied?.target.id == defaults.string(forKey: preferenceKey) && board.text == "Converted: Original",
                    "The shortcut did not copy its target before opening the picker.")
@@ -511,6 +544,84 @@ private func shortcutCopyInvariants(_ defaults: UserDefaults) async throws {
 }
 
 @MainActor
+private func pinnedShortcutInvariants(_ defaults: UserDefaults) async throws {
+    let key = "copied-md.pinnedFormats"
+    let formats = [Target(id: "plain-text", label: "Plain Text"), Target(id: "signal", label: "Signal")]
+    let board = InterleavedPasteboard()
+    defaults.removeObject(forKey: key)
+    defaults.set("plain-text", forKey: preferenceKey)
+    defer { defaults.removeObject(forKey: key) }
+    var copied: [String] = []
+    var suggestion: String?
+    let app = CopyDestination(id: "test.signal", name: "Test Signal")
+    try expect(CopyDestination.describing(bundleID: app.id, name: nil)?.name == app.id,
+               "Apps without a display name must use their bundle ID.")
+    try expect(CopyDestination.describing(bundleID: nil, name: app.name) == nil,
+               "Apps without bundle IDs cannot be pinned.")
+    var configure = "Signal"
+    var confirm = true
+    let desktop = DesktopApp(runtime: TestRuntime(warning: false, formats: formats), defaults: defaults,
+                             clipboardDefaults: defaults, clipboard: { board }, chooseFormat: { _, first, suggested in
+        copied.append(first?.target.id ?? "manual")
+        suggestion = suggested
+        return Choice(target: nil)
+    }, destination: { app }, runAlert: { alert in
+        guard let choices = alert.accessoryView as? NSPopUpButton else { return .alertSecondButtonReturn }
+        choices.selectItem(withTitle: configure)
+        return confirm ? .alertFirstButtonReturn : .alertSecondButtonReturn
+    })
+    defer { desktop.feedback?.cancel() }
+    await desktop.startCopy(mode: .copyAndPick, applicationID: "test.signal")?.value
+    try expect(copied == ["plain-text"], "A fresh profile must use its last-used format.")
+    copied.removeAll()
+    defaults.set(["test.signal": "signal", "test.invalid": "missing"], forKey: key)
+    await desktop.startCopy(mode: .copyAndPick, applicationID: "test.signal")?.value
+    try expect(copied == ["signal"], "The shortcut ignored the format pinned to the focused app.")
+    try expect(defaults.string(forKey: preferenceKey) == "plain-text", "An app pin replaced the global fallback.")
+    await desktop.startCopy(mode: .copyAndPick, applicationID: "test.invalid")?.value
+    await desktop.startCopy(mode: .picker, applicationID: "test.signal")?.value
+    try expect(copied == ["signal", "plain-text", "manual"], "An invalid pin or manual picker changed the fallback.")
+    try expect(suggestion == "signal", "Picker-first mode did not suggest the pinned format.")
+    configure = "Plain Text"
+    desktop.menuWillOpen(desktop.menu)
+    guard let pin = desktop.menu.item(withTitle: "Choose Format for Test Signal…"),
+          let action = pin.action else { throw Failure("The menu did not offer a pin for the focused app.") }
+    try expect(NSApp.sendAction(action, to: pin.target, from: pin), "The menu did not invoke app format settings.")
+    for _ in 0..<100 {
+        if defaults.dictionary(forKey: key)?[app.id] as? String == "plain-text" { break }
+        await Task.yield()
+    }
+    try expect(defaults.dictionary(forKey: key)?[app.id] as? String == "plain-text", "Saving an app pin failed.")
+    configure = "Use Last-Used Format"
+    confirm = false
+    await desktop.configureAppFormat(app)?.value
+    try expect(defaults.dictionary(forKey: key)?[app.id] as? String == "plain-text", "Cancel removed the app pin.")
+    confirm = true
+    await desktop.configureAppFormat(app)?.value
+    try expect(defaults.dictionary(forKey: key)?[app.id] == nil, "Use Last-Used Format did not remove the app pin.")
+    var catalogError: String?
+    let unavailable = DesktopApp(runtime: TestRuntime(warning: false, failCatalog: true), defaults: defaults,
+                                 runAlert: { alert in
+        catalogError = alert.messageText
+        return .alertFirstButtonReturn
+    })
+    await unavailable.configureAppFormat(app)?.value
+    try expect(catalogError == "Catalog unavailable", "Could not explain why app format settings were unavailable.")
+
+    var renderedPin = false
+    let dismiss = afterModalStarts(delay: 0.15) {
+        renderedPin = NSApp.modalWindow?.defaultButtonCell?.title == "Copy Signal"
+        NSApp.abortModal()
+    }
+    defer { dismiss.invalidate() }
+    defaults.set(["test.signal": "signal"], forKey: key)
+    let realPicker = DesktopApp(runtime: TestRuntime(warning: false, formats: formats), defaults: defaults,
+                                clipboardDefaults: defaults, clipboard: { board })
+    await realPicker.startCopy(mode: .picker, applicationID: app.id)?.value
+    try expect(renderedPin, "The native picker did not highlight the pinned format.")
+}
+
+@MainActor
 private func telegramSelfTestFailures() throws {
     try expectFailure("did not preserve the message layout") {
         try CopiedDesktop.testTelegramPasteboard(TestRuntime(warning: false))
@@ -531,7 +642,7 @@ private func desktopCopyInvariants(_ defaults: UserDefaults) async throws {
     var alerts: [(String, String)] = []
     let desktop = DesktopApp(
         runtime: TestRuntime(warning: true), defaults: defaults, clipboardDefaults: defaults,
-        clipboard: { board }, chooseFormat: { formats, _ in
+        clipboard: { board }, chooseFormat: { formats, _, _ in
             try expect(formats.map(\.id) == ["plain-text"], "Desktop provided the wrong formats.")
             if writeExternalTextBeforeConversion {
                 board.changeCount += 1
@@ -592,7 +703,7 @@ private func desktopCopyInvariants(_ defaults: UserDefaults) async throws {
     board.text = "Markdown"
     let unavailable = DesktopApp(
         runtime: TestRuntime(warning: false, failCatalog: true), defaults: defaults,
-        clipboardDefaults: defaults, clipboard: { board }, chooseFormat: { _, _ in
+        clipboardDefaults: defaults, clipboard: { board }, chooseFormat: { _, _, _ in
             throw Failure("Picker should not open without a catalog.")
         },
         runAlert: { alert in
@@ -606,7 +717,7 @@ private func desktopCopyInvariants(_ defaults: UserDefaults) async throws {
 
     let conversionFailure = DesktopApp(
         runtime: TestRuntime(warning: false, failConversion: true), defaults: defaults,
-        clipboardDefaults: defaults, clipboard: { board }, chooseFormat: { _, _ in Choice(target: "plain-text") },
+        clipboardDefaults: defaults, clipboard: { board }, chooseFormat: { _, _, _ in Choice(target: "plain-text") },
         runAlert: { alert in
             alerts.append((alert.messageText, alert.informativeText))
             return .alertFirstButtonReturn
@@ -956,6 +1067,8 @@ enum NativeTests {
         try telegramSelfTestFailures()
         try await desktopCopyInvariants(defaults)
         try await shortcutCopyInvariants(defaults)
+        try await pinnedShortcutInvariants(defaults)
+        try specialistVisibilityInvariants(defaults)
         try desktopLifecycle(defaults)
         print("Native clipboard, picker, desktop, hotkey and converter runtime tests passed.")
     }

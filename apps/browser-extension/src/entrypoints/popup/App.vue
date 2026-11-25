@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue';
+import { ref, onMounted, watch } from 'vue';
 import PlatformSelector from '@/components/PlatformSelector.vue';
 import MarkdownPreview from '@/components/MarkdownPreview.vue';
 import SettingsPanel from '@/components/SettingsPanel.vue';
@@ -14,6 +14,14 @@ onMounted(async () => {
   await settings.load();
   ui.selectPlatform(settings.defaultPlatform);
 });
+
+watch(
+  () => settings.formats,
+  (formats) => {
+    if (!formats.some(({ id }) => id === ui.selectedPlatform))
+      ui.selectPlatform(settings.defaultPlatform);
+  },
+);
 </script>
 
 <template>

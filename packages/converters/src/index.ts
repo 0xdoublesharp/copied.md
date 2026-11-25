@@ -1,7 +1,12 @@
 export { Platform } from './types';
 export type { PlatformConverter, ConversionResult, ClipboardPayload } from './types';
 export { convertMarkdown, resolveTarget, targets } from './conversion';
-export type { ConversionOptions, CopyTarget, MarkdownConversion } from './conversion';
+export type {
+  ConversionOptions,
+  CopyTarget,
+  CopyTargetDefinition,
+  MarkdownConversion,
+} from './conversion';
 
 import { Platform } from './types';
 import type { PlatformConverter } from './types';

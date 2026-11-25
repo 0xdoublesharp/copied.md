@@ -9,8 +9,12 @@ import {
 } from '@0xdoublesharp/copied-md-converters';
 import { MENU_PARENT_ID, STORAGE_KEYS } from '@/lib/constants';
 import { writeToClipboard, type SelectionSource } from '@/lib/clipboard-service';
+import { preferredFormat, visibleFormats } from '@/lib/copy-formats';
+import type { SettingsState } from '@/stores/settings.store';
+import { registerChatAccess } from '@/lib/chat-access';
 
 let selectionQueue: Promise<unknown> = Promise.resolve();
+let menuQueue: Promise<unknown> = Promise.resolve();
 
 async function readSelection(tabId: number, frameId: number): Promise<SelectionSource | undefined> {
   const request = () => browser.tabs.sendMessage(tabId, { type: 'READ_SELECTION' }, { frameId });
@@ -88,15 +92,18 @@ function copySelection(target: CopyTarget, tabId?: number, frameId = 0, fallback
   });
 }
 
-export default defineBackground(() => {
-  browser.runtime.onInstalled.addListener(() => {
-    void browser.contextMenus.removeAll().then(() => {
+function refreshMenus() {
+  menuQueue = menuQueue
+    .then(async () => {
+      const saved = await browser.storage.local.get(STORAGE_KEYS.SETTINGS).catch(() => ({}));
+      const settings = (saved as Record<string, Partial<SettingsState>>)[STORAGE_KEYS.SETTINGS];
+      await browser.contextMenus.removeAll();
       browser.contextMenus.create({
         id: MENU_PARENT_ID,
         title: 'Copy Markdown As…',
         contexts: ['selection'],
       });
-      for (const format of targets) {
+      for (const format of visibleFormats(settings?.formatVisibility)) {
         browser.contextMenus.create({
           id: 'copied-md-' + format.id,
           parentId: MENU_PARENT_ID,
@@ -104,7 +111,15 @@ export default defineBackground(() => {
           contexts: ['selection'],
         });
       }
-    });
+    })
+    .catch(() => undefined);
+}
+
+export default defineBackground(() => {
+  registerChatAccess();
+  browser.runtime.onInstalled.addListener(refreshMenus);
+  browser.storage.onChanged.addListener((changes, area) => {
+    if (area === 'local' && changes[STORAGE_KEYS.SETTINGS]) refreshMenus();
   });
 
   browser.contextMenus.onClicked.addListener((info, tab) => {
@@ -120,11 +135,13 @@ export default defineBackground(() => {
         STORAGE_KEYS.LAST_TARGET,
         STORAGE_KEYS.SETTINGS,
       ]);
-      const value =
-        saved[STORAGE_KEYS.LAST_TARGET] ??
-        (saved[STORAGE_KEYS.SETTINGS] as { defaultPlatform?: string } | undefined)?.defaultPlatform;
-      const target = typeof value === 'string' ? resolveTarget(value) : undefined;
-      copySelection(target ?? 'rich-text', tab?.id);
+      const settings = saved[STORAGE_KEYS.SETTINGS] as Partial<SettingsState> | undefined;
+      const target = preferredFormat(
+        settings?.formatVisibility,
+        saved[STORAGE_KEYS.LAST_TARGET],
+        settings?.defaultPlatform,
+      );
+      copySelection(target, tab?.id);
     } catch {
       await report('Copy failed. Open copied.md to paste and convert.', undefined, 0, true, false);
     }

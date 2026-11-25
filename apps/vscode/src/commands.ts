@@ -1,5 +1,7 @@
 import { spawn } from 'node:child_process';
-import { isAbsolute } from 'node:path';
+import { access, constants, stat } from 'node:fs/promises';
+import { homedir } from 'node:os';
+import { isAbsolute, join } from 'node:path';
 import * as vscode from 'vscode';
 import {
   convertMarkdown,
@@ -46,8 +48,19 @@ async function copy(target?: CopyTarget): Promise<void> {
       return;
     }
     if (!target) {
+      const visibility = vscode.workspace
+        .getConfiguration('copied-md')
+        .get<Partial<Record<CopyTarget, boolean>>>('formatVisibility', {});
+      const available = targets.filter(({ id, enabledByDefault }) => {
+        const visible = visibility[id];
+        return typeof visible === 'boolean' ? visible : enabledByDefault !== false;
+      });
+      if (!available.length) {
+        void vscode.window.showWarningMessage('Enable a copied.md format in Settings.');
+        return;
+      }
       const choice = await vscode.window.showQuickPick(
-        targets.map((item) => ({ label: item.label, target: item.id })),
+        available.map((item) => ({ label: item.label, target: item.id })),
         {
           placeHolder: wholeDocument ? 'Copy the Markdown document as…' : 'Copy the selection as…',
         },
@@ -97,8 +110,9 @@ async function writeRich(representations: ClipboardPayload): Promise<boolean> {
     vscode.env.uiKind !== vscode.UIKind.Desktop
   )
     return false;
-  const executable = vscode.workspace.getConfiguration('copied-md').get<string>('pasteboardHelper');
-  if (!executable || !isAbsolute(executable)) return false;
+  const configured = vscode.workspace.getConfiguration('copied-md').get<string>('pasteboardHelper');
+  const executable = await findPasteboardHelper(configured);
+  if (!executable) return false;
   return new Promise((resolve) => {
     const child = spawn(executable, ['write'], {
       stdio: ['pipe', 'ignore', 'ignore'],
@@ -109,4 +123,20 @@ async function writeRich(representations: ClipboardPayload): Promise<boolean> {
     child.stdin.on('error', () => resolve(false));
     child.stdin.end(JSON.stringify({ representations }));
   });
+}
+
+async function findPasteboardHelper(configured: string | undefined): Promise<string | undefined> {
+  if (configured) return isAbsolute(configured) ? configured : undefined;
+
+  for (const applications of [join(homedir(), 'Applications'), '/Applications']) {
+    const executable = join(applications, 'copied.md.app/Contents/Helpers/copied-md-pasteboard');
+    try {
+      if (!(await stat(executable)).isFile()) continue;
+      await access(executable, constants.X_OK);
+      return executable;
+    } catch {
+      // The app may be installed in the other Applications folder.
+    }
+  }
+  return undefined;
 }

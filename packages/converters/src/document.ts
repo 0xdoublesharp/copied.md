@@ -77,12 +77,18 @@ export function readMarkdown(markdown: string, sourceUrl?: string) {
 
 interface HtmlTextOptions {
   escapeText?: (value: string) => string;
+  renderLink?: (element: Element, label: string) => string;
   renderSpan?: (element: Element, content: string) => string;
+  renderTable?: (element: Element) => string;
 }
 
-export function htmlText(
-  source: string,
-  { escapeText = (value) => value, renderSpan }: HtmlTextOptions = {},
+export function htmlText(source: string, options?: HtmlTextOptions): string {
+  return htmlNodeText(fromHtml(source, { fragment: true }), options);
+}
+
+export function htmlNodeText(
+  root: HtmlParent,
+  { escapeText = (value) => value, renderLink, renderSpan, renderTable }: HtmlTextOptions = {},
 ): string {
   const ignored = new Set(['script', 'style', 'template', 'iframe', 'object']);
   const blocks = new Set(['p', 'div', 'section', 'article', 'li', 'tr', 'br']);
@@ -91,14 +97,16 @@ export function htmlText(
       .map((node) => {
         if (node.type === 'text') return escapeText(node.value);
         if (node.type !== 'element' || ignored.has(node.tagName)) return '';
+        if (node.tagName === 'table' && renderTable) return renderTable(node) + '\n';
         const value =
           node.tagName === 'img' ? escapeText(String(node.properties.alt ?? '')) : text(node);
+        if (node.tagName === 'a' && renderLink) return renderLink(node, value);
         if (node.tagName === 'span' && renderSpan) return renderSpan(node, value);
         return blocks.has(node.tagName) ? `${value}\n` : value;
       })
       .join('');
   }
-  return text(fromHtml(source, { fragment: true }));
+  return text(root);
 }
 
 export function footnoteNumbers(tree: Root): Map<string, number> {

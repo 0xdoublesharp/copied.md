@@ -1,6 +1,7 @@
 import { defineConfig } from 'wxt';
 import tailwindcss from '@tailwindcss/vite';
 import { fileURLToPath } from 'node:url';
+import { CHAT_SITES, chatOrigin } from './src/lib/constants';
 
 export default defineConfig({
   srcDir: 'src',
@@ -35,7 +36,8 @@ export default defineConfig({
       'clipboardWrite',
       'activeTab',
       'storage',
-      ...(['chrome', 'edge'].includes(browser) ? ['offscreen' as const, 'scripting' as const] : []),
+      'scripting',
+      ...(['chrome', 'edge'].includes(browser) ? ['offscreen' as const] : []),
     ],
     icons: {
       '16': 'icon-16.png',
@@ -48,14 +50,19 @@ export default defineConfig({
     },
     ...(browser === 'firefox'
       ? {
+          optional_permissions: CHAT_SITES.map(chatOrigin),
           browser_specific_settings: {
             gecko: {
               id: 'copied-md@copied.md',
+              strict_min_version: '102.0',
               data_collection_permissions: { required: ['none' as const] },
             },
           },
         }
-      : { minimum_chrome_version: '116' }),
+      : {
+          minimum_chrome_version: '116',
+          optional_host_permissions: CHAT_SITES.map(chatOrigin),
+        }),
   }),
   vite: () => ({
     plugins: [tailwindcss()],
