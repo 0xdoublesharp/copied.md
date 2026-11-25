@@ -7,6 +7,7 @@ pub(crate) mod serialize;
 pub(crate) mod tables;
 pub(crate) mod text;
 pub(crate) mod to_hast;
+pub(crate) mod to_markdown;
 
 use crate::ast::Node;
 use dom::{HElement, HNode};

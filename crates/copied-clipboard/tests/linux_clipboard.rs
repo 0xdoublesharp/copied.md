@@ -1,7 +1,7 @@
 #![cfg(target_os = "linux")]
 
 use copied_clipboard::{
-    WriteError,
+    ClipboardSnapshot, WriteError,
     linux::{Session, desktop_session},
     system_board,
 };
@@ -16,7 +16,7 @@ fn cross_client_clipboard_round_trip_and_stale_guard() {
     let original = ClipboardPayload {
         // Large enough to exercise X11 INCR and Wayland pipe streaming.
         plain: "Hello, 🌍\n".repeat(28_000),
-        html: Some("<b>Hello</b>".into()),
+        html: Some("<b>Hello, 🌍</b>".into()),
         rtf: Some(r"{\rtf1 Hello}".into()),
         ..ClipboardPayload::default()
     };
@@ -25,6 +25,15 @@ fn cross_client_clipboard_round_trip_and_stale_guard() {
     assert_eq!(first.types, ["text/plain", "text/html", "text/rtf"]);
     let captured = consumer.read_text().unwrap();
     assert_eq!(captured.text, original.plain);
+    for (board, revision) in [(&producer, first.revision), (&consumer, captured.revision)] {
+        assert_eq!(
+            board.read_html().unwrap(),
+            original
+                .html
+                .clone()
+                .map(|text| ClipboardSnapshot { text, revision })
+        );
+    }
     let external = ClipboardPayload {
         plain: "new external text".into(),
         ..ClipboardPayload::default()
@@ -35,4 +44,6 @@ fn cross_client_clipboard_round_trip_and_stale_guard() {
         Err(WriteError::Stale)
     );
     assert_eq!(consumer.read_text().unwrap().text, external.plain);
+    assert_eq!(producer.read_html(), Ok(None));
+    assert_eq!(consumer.read_html(), Ok(None));
 }

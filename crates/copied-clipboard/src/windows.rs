@@ -21,8 +21,8 @@ use windows::{
 
 use crate::{
     Board, ClipboardSnapshot, Revision, WriteError, WrittenClipboard,
-    bundle::{prepare_bundle, windows_html},
-    require_revision, stable_snapshot,
+    bundle::{prepare_bundle, windows_html, windows_html_fragment},
+    require_revision, stable_optional_snapshot,
 };
 
 const CF_UNICODETEXT: u32 = 13;
@@ -187,6 +187,53 @@ fn unicode_text(_lock: &ClipboardLock) -> Result<Option<String>, WriteError> {
     }
 }
 
+#[allow(unsafe_code)]
+fn html_text(_lock: &ClipboardLock) -> Result<Option<String>, WriteError> {
+    let format = registered_format(w!("HTML Format"))?;
+    // SAFETY: The open clipboard protects its handles. GlobalLock keeps the
+    // allocation valid while the fragment is decoded into an owned string.
+    unsafe {
+        if IsClipboardFormatAvailable(format).is_err() {
+            return Ok(None);
+        }
+        let handle =
+            GetClipboardData(format).map_err(|error| WriteError::Unavailable(error.to_string()))?;
+        let memory = HGLOBAL(handle.0);
+        let capacity = GlobalSize(memory);
+        if capacity == 0 || capacity > isize::MAX as usize {
+            return Err(WriteError::Unavailable(
+                "invalid HTML clipboard allocation".into(),
+            ));
+        }
+        let data = GlobalLock(memory).cast::<u8>();
+        if data.is_null() {
+            return Err(WriteError::Unavailable(
+                "could not read clipboard memory".into(),
+            ));
+        }
+        let text = windows_html_fragment(slice::from_raw_parts(data, capacity));
+        let _ = GlobalUnlock(memory);
+        text.map(Some)
+    }
+}
+
+impl WinClipboard {
+    fn read_format(
+        &self,
+        read: impl Fn(&ClipboardLock) -> Result<Option<String>, WriteError>,
+    ) -> Result<Option<ClipboardSnapshot>, WriteError> {
+        let lock = ClipboardLock::open(None)?;
+        // Delayed rendering can advance the sequence on the first read.
+        let capture = || stable_optional_snapshot(|| self.revision(), || read(&lock));
+        let snapshot = capture();
+        if snapshot == Err(WriteError::Stale) {
+            capture()
+        } else {
+            snapshot
+        }
+    }
+}
+
 fn terminated(text: &str) -> Vec<u8> {
     let mut bytes = text.as_bytes().to_vec();
     bytes.push(0);
@@ -201,14 +248,11 @@ impl Board for WinClipboard {
     }
 
     fn read_text(&self) -> Result<ClipboardSnapshot, WriteError> {
-        let lock = ClipboardLock::open(None)?;
-        // Delayed rendering can advance the sequence on the first read.
-        let snapshot = stable_snapshot(|| self.revision(), || unicode_text(&lock));
-        if snapshot == Err(WriteError::Stale) {
-            stable_snapshot(|| self.revision(), || unicode_text(&lock))
-        } else {
-            snapshot
-        }
+        self.read_format(unicode_text)?.ok_or(WriteError::Empty)
+    }
+
+    fn read_html(&self) -> Result<Option<ClipboardSnapshot>, WriteError> {
+        self.read_format(html_text)
     }
 
     #[allow(unsafe_code)]

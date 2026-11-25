@@ -19,8 +19,8 @@ use x11rb::{
     wrapper::ConnectionExt as _,
 };
 
-use super::{Formats, MAX_READ_BYTES, PLAIN, POLL_INTERVAL, Selection, unavailable};
-use crate::{ClipboardSnapshot, Revision, WriteError, WrittenClipboard, require_revision};
+use super::{Formats, MAX_READ_BYTES, PLAIN, POLL_INTERVAL, ReadFormat, Selection, unavailable};
+use crate::{Revision, WriteError, WrittenClipboard, require_revision};
 
 const TRANSFER_TIMEOUT: Duration = Duration::from_secs(2);
 
@@ -32,6 +32,7 @@ x11rb::atom_manager! {
         INCR,
         UTF8_STRING,
         COPIED_SELECTION,
+        HTML: b"text/html",
     }
 }
 
@@ -371,27 +372,24 @@ impl X11 {
         Ok(reply)
     }
 
-    fn read_external(&mut self, revision: Revision) -> Result<String, WriteError> {
-        let plain_utf8 = self.intern(PLAIN)?;
-        let plain = self.intern("text/plain")?;
+    fn read_external(
+        &mut self,
+        targets: &[Atom],
+        revision: Revision,
+    ) -> Result<Option<String>, WriteError> {
         let window = new_window(&self.connection, self.root)?;
         let deadline = Instant::now() + TRANSFER_TIMEOUT;
         let result = (|| {
-            for target in [
-                self.atoms.UTF8_STRING,
-                plain_utf8,
-                plain,
-                u32::from(AtomEnum::STRING),
-            ] {
+            for &target in targets {
                 if let Some(bytes) = self.read_target(window, target, revision, deadline)? {
                     return if target == u32::from(AtomEnum::STRING) {
-                        Ok(bytes.into_iter().map(char::from).collect())
+                        Ok(Some(bytes.into_iter().map(char::from).collect()))
                     } else {
-                        String::from_utf8(bytes).map_err(unavailable)
+                        String::from_utf8(bytes).map(Some).map_err(unavailable)
                     };
                 }
             }
-            Err(WriteError::Empty)
+            Ok(None)
         })();
         if let Ok(cookie) = self.connection.destroy_window(window) {
             cookie.ignore_error();
@@ -479,20 +477,37 @@ impl Selection for X11 {
         Ok(self.revision)
     }
 
-    fn read(&mut self) -> Result<ClipboardSnapshot, WriteError> {
-        let revision = self.revision()?;
-        let text = if let Some(data) = &self.owned {
-            Ok(data.plain.clone())
-        } else if self.owner == x11rb::NONE {
-            Err(WriteError::Empty)
-        } else {
-            self.read_external(revision)
-        };
-        require_revision(Some(revision), self.revision()?)?;
-        Ok(ClipboardSnapshot {
-            text: text?,
-            revision,
-        })
+    fn read_format(
+        &mut self,
+        format: ReadFormat,
+        revision: Revision,
+    ) -> Result<Option<String>, WriteError> {
+        if let Some(data) = &self.owned {
+            return match format {
+                ReadFormat::Plain => Ok(Some(data.plain.clone())),
+                ReadFormat::Html => data
+                    .formats
+                    .iter()
+                    .find(|(atom, _)| *atom == self.atoms.HTML)
+                    .map(|(_, bytes)| String::from_utf8(bytes.to_vec()).map_err(unavailable))
+                    .transpose(),
+            };
+        }
+        if self.owner == x11rb::NONE {
+            return Ok(None);
+        }
+        match format {
+            ReadFormat::Plain => self.read_external(
+                &[
+                    self.atoms.UTF8_STRING,
+                    self.intern(PLAIN)?,
+                    self.intern("text/plain")?,
+                    u32::from(AtomEnum::STRING),
+                ],
+                revision,
+            ),
+            ReadFormat::Html => self.read_external(&[self.atoms.HTML], revision),
+        }
     }
 
     fn write(

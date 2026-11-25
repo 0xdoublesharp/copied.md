@@ -13,6 +13,7 @@ use copied_core::ClipboardPayload;
 
 use crate::{
     Board, ClipboardSnapshot, Revision, WriteError, WrittenClipboard, bundle::prepare_bundle,
+    require_revision,
 };
 
 mod wayland;
@@ -22,6 +23,7 @@ const POLL_INTERVAL: Duration = Duration::from_millis(10);
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(4);
 const MAX_READ_BYTES: usize = 64 * 1024 * 1024;
 const PLAIN: &str = "text/plain;charset=utf-8";
+const HTML: &str = "text/html";
 const SIGNAL: &str = "chromium/x-web-custom-data";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -75,7 +77,7 @@ impl Formats {
         let types = bundle.types();
         let plain: Arc<[u8]> = Arc::from(bundle.plain.as_bytes());
         let mut mime = vec![(PLAIN, plain.clone()), ("text/plain", plain)];
-        for (name, bytes) in [("text/html", bundle.html), ("text/rtf", bundle.rtf)] {
+        for (name, bytes) in [(HTML, bundle.html), ("text/rtf", bundle.rtf)] {
             if let Some(bytes) = bytes {
                 mime.push((name, Arc::from(bytes.as_bytes())));
             }
@@ -93,7 +95,10 @@ impl Formats {
 
 enum Command {
     Revision(Sender<Result<Revision, WriteError>>),
-    Read(Sender<Result<ClipboardSnapshot, WriteError>>),
+    Read(
+        ReadFormat,
+        Sender<Result<Option<ClipboardSnapshot>, WriteError>>,
+    ),
     Write(
         Formats,
         Option<Revision>,
@@ -101,10 +106,28 @@ enum Command {
     ),
 }
 
+#[derive(Clone, Copy)]
+enum ReadFormat {
+    Plain,
+    Html,
+}
+
 trait Selection {
     fn poll(&mut self) -> Result<(), WriteError>;
     fn revision(&mut self) -> Result<Revision, WriteError>;
-    fn read(&mut self) -> Result<ClipboardSnapshot, WriteError>;
+    fn read_format(
+        &mut self,
+        format: ReadFormat,
+        revision: Revision,
+    ) -> Result<Option<String>, WriteError>;
+
+    fn read(&mut self, format: ReadFormat) -> Result<Option<ClipboardSnapshot>, WriteError> {
+        let revision = self.revision()?;
+        let text = self.read_format(format, revision);
+        require_revision(Some(revision), self.revision()?)?;
+        Ok(text?.map(|text| ClipboardSnapshot { text, revision }))
+    }
+
     fn write(
         &mut self,
         formats: Formats,
@@ -155,8 +178,8 @@ impl LinuxClipboard {
                         Ok(Command::Revision(reply)) => {
                             let _ = reply.send(board.revision());
                         }
-                        Ok(Command::Read(reply)) => {
-                            let _ = reply.send(board.read());
+                        Ok(Command::Read(format, reply)) => {
+                            let _ = reply.send(board.read(format));
                         }
                         Ok(Command::Write(formats, expected, reply)) => {
                             let _ = reply.send(board.write(formats, expected));
@@ -189,7 +212,12 @@ impl Board for LinuxClipboard {
     }
 
     fn read_text(&self) -> Result<ClipboardSnapshot, WriteError> {
-        self.request(Command::Read)
+        self.request(|reply| Command::Read(ReadFormat::Plain, reply))?
+            .ok_or(WriteError::Empty)
+    }
+
+    fn read_html(&self) -> Result<Option<ClipboardSnapshot>, WriteError> {
+        self.request(|reply| Command::Read(ReadFormat::Html, reply))
     }
 
     fn write(

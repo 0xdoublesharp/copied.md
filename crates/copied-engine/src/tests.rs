@@ -420,3 +420,136 @@ fn picker_id_exhaustion_is_rejected_before_writing() {
     engine.start_copy(ShortcutCopyMode::CopyOnly, None).unwrap();
     assert_eq!(engine.board.revision().unwrap(), Revision(1));
 }
+
+#[test]
+fn shortcut_reuses_original_markdown_after_its_own_write() {
+    let mut engine = engine(FakeBoard::with_text(SOURCE)).with_converter(marked_conversion);
+    engine.config.pinned_formats.insert(PIN.into(), OTHER);
+    engine.start_copy(ShortcutCopyMode::CopyOnly, None).unwrap();
+    engine
+        .start_copy(ShortcutCopyMode::CopyOnly, Some(PIN))
+        .unwrap();
+    assert_eq!(
+        engine.board.read_text().unwrap().text,
+        format!("[{OTHER}: {SOURCE}]")
+    );
+}
+
+#[test]
+fn picker_preview_uses_remembered_source_and_truncates_at_a_character_boundary() {
+    let source = format!("{}é beyond the preview", "a".repeat(1_999));
+    let mut engine = engine(FakeBoard::with_text(&source)).with_converter(marked_conversion);
+    engine.start_copy(ShortcutCopyMode::CopyOnly, None).unwrap();
+
+    let op_id = opened(&engine.start_copy(ShortcutCopyMode::Picker, None).unwrap());
+    let request = &engine.picker.opened[0];
+    assert_eq!(request.source_preview.as_deref(), Some(&source[..1_999]));
+    assert_eq!(engine.active.as_ref().unwrap().original_markdown, source);
+    engine.handle_picker_choice(op_id, Some(OTHER)).unwrap();
+    assert_eq!(
+        engine.board.read_text().unwrap().text,
+        format!("[{OTHER}: {source}]")
+    );
+
+    let previous = engine.last_source().unwrap();
+    assert_eq!(previous.markdown, source);
+    assert_eq!(previous.target, OTHER);
+    assert_eq!(previous.written_revision, engine.board.revision().unwrap());
+
+    engine.board.external_copy("*new*");
+    engine.start_copy(ShortcutCopyMode::Picker, None).unwrap();
+    assert_eq!(
+        engine.picker.opened[1].source_preview.as_deref(),
+        Some("*new*")
+    );
+}
+
+fn board_with_html(html: &str) -> FakeBoard {
+    let mut board = FakeBoard::default();
+    board
+        .write(
+            &ClipboardPayload {
+                plain: "clipboard fallback".into(),
+                html: Some(html.into()),
+                ..ClipboardPayload::default()
+            },
+            None,
+        )
+        .unwrap();
+    board
+}
+
+#[test]
+fn reverse_conversion_copies_only_markdown_and_remembers_it() {
+    let mut engine = engine(board_with_html("<p><strong>hello</strong></p>"));
+    engine.config.last_target = Some(DEFAULT);
+
+    assert_eq!(engine.convert_html_to_markdown(), Ok(SOURCE.into()));
+    assert_eq!(engine.board.read_html().unwrap(), None);
+    let snapshot = engine.board.read_text().unwrap();
+    assert_eq!(snapshot.text, SOURCE);
+    assert_eq!(
+        engine.last_source(),
+        Some(&RecentSource {
+            markdown: SOURCE.into(),
+            written_revision: snapshot.revision,
+            target: CopyTarget::PlainText,
+        })
+    );
+    assert_eq!(engine.config.last_target, Some(DEFAULT));
+    assert_eq!(engine.notifier.copies, [CopyTarget::PlainText]);
+    assert_eq!(engine.notifier.errors, [] as [String; 0]);
+
+    engine
+        .start_copy(ShortcutCopyMode::CopyAndPick, None)
+        .unwrap();
+    assert_eq!(
+        engine.picker.opened[0].source_preview.as_deref(),
+        Some(SOURCE)
+    );
+}
+
+#[test]
+fn reverse_conversion_reports_missing_or_empty_html() {
+    for board in [
+        FakeBoard::with_text(SOURCE),
+        board_with_html("<style>hidden</style><p> </p>"),
+    ] {
+        let revision = board.revision().unwrap();
+        let writes = board.write_calls();
+        let mut engine = engine(board);
+        assert_eq!(
+            engine.convert_html_to_markdown(),
+            Err(EngineError::Clipboard(WriteError::Empty))
+        );
+        assert_eq!(engine.board.revision().unwrap(), revision);
+        assert_eq!(engine.board.write_calls(), writes);
+        assert!(engine.last_source().is_none());
+        assert_eq!(engine.notifier.errors, [WriteError::Empty.to_string()]);
+        assert_eq!(engine.notifier.copies, [] as [CopyTarget; 0]);
+    }
+}
+
+#[test]
+fn reverse_conversion_honors_picker_and_clipboard_revision_guards() {
+    let mut engine = engine(board_with_html("<b>hello</b>"));
+    let op_id = opened(&engine.start_copy(ShortcutCopyMode::Picker, None).unwrap());
+    assert_eq!(engine.convert_html_to_markdown(), Err(EngineError::Busy));
+    assert_eq!(engine.notifier.errors, [] as [String; 0]);
+    engine.handle_picker_dismiss(op_id).unwrap();
+
+    engine.board.on_before_clear = Some(|board| {
+        board.external_copy("new clipboard contents");
+    });
+    assert_eq!(
+        engine.convert_html_to_markdown(),
+        Err(EngineError::Clipboard(WriteError::Stale))
+    );
+    assert_eq!(
+        engine.board.read_text().unwrap().text,
+        "new clipboard contents"
+    );
+    assert!(engine.last_source().is_none());
+    assert_eq!(engine.notifier.errors, [WriteError::Stale.to_string()]);
+    assert_eq!(engine.notifier.copies, [] as [CopyTarget; 0]);
+}

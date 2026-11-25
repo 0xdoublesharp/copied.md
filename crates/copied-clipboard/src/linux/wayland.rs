@@ -31,8 +31,10 @@ use wayland_protocols_wlr::data_control::v1::client::{
     zwlr_data_control_offer_v1 as wlr_offer, zwlr_data_control_source_v1 as wlr_source,
 };
 
-use super::{Formats, MAX_READ_BYTES, PLAIN, POLL_INTERVAL, Selection, unavailable};
-use crate::{ClipboardSnapshot, Revision, WriteError, WrittenClipboard, require_revision};
+use super::{
+    Formats, HTML, MAX_READ_BYTES, PLAIN, POLL_INTERVAL, ReadFormat, Selection, unavailable,
+};
+use crate::{Revision, WriteError, WrittenClipboard, require_revision};
 
 const TIMEOUT: Duration = Duration::from_secs(2);
 const MAX_PENDING_SENDS: usize = 32;
@@ -325,17 +327,23 @@ impl Wayland {
         Ok(())
     }
 
-    fn receive(&mut self, revision: Revision) -> Result<String, WriteError> {
-        let offer = self.state.selection.as_ref().ok_or(WriteError::Empty)?;
-        let types = self
-            .state
-            .formats
-            .get(&offer.id())
-            .ok_or(WriteError::Empty)?;
-        let mime = [PLAIN, "text/plain", "UTF8_STRING"]
-            .into_iter()
-            .find(|mime| types.iter().any(|available| available == mime))
-            .ok_or(WriteError::Empty)?;
+    fn receive(
+        &mut self,
+        candidates: &[&str],
+        revision: Revision,
+    ) -> Result<Option<String>, WriteError> {
+        let Some(offer) = self.state.selection.as_ref() else {
+            return Ok(None);
+        };
+        let Some(types) = self.state.formats.get(&offer.id()) else {
+            return Ok(None);
+        };
+        let Some(&mime) = candidates
+            .iter()
+            .find(|&&mime| types.iter().any(|available| available == mime))
+        else {
+            return Ok(None);
+        };
         let (read, write) = pipe_with(PipeFlags::CLOEXEC).map_err(unavailable)?;
         let flags = fcntl_getfl(&read).map_err(unavailable)?;
         fcntl_setfl(&read, flags | OFlags::NONBLOCK).map_err(unavailable)?;
@@ -349,7 +357,7 @@ impl Wayland {
             self.poll()?;
             require_revision(Some(revision), Revision(self.state.revision))?;
             match pipe.read(&mut chunk) {
-                Ok(0) => return String::from_utf8(bytes).map_err(unavailable),
+                Ok(0) => return String::from_utf8(bytes).map(Some).map_err(unavailable),
                 Ok(count) if bytes.len() + count <= MAX_READ_BYTES => {
                     bytes.extend_from_slice(&chunk[..count]);
                 }
@@ -446,14 +454,16 @@ impl Selection for Wayland {
         Ok(Revision(self.state.revision))
     }
 
-    fn read(&mut self) -> Result<ClipboardSnapshot, WriteError> {
-        let revision = self.revision()?;
-        let text = self.receive(revision);
-        require_revision(Some(revision), self.revision()?)?;
-        Ok(ClipboardSnapshot {
-            text: text?,
-            revision,
-        })
+    fn read_format(
+        &mut self,
+        format: ReadFormat,
+        revision: Revision,
+    ) -> Result<Option<String>, WriteError> {
+        let mime_types: &[&str] = match format {
+            ReadFormat::Plain => &[PLAIN, "text/plain", "UTF8_STRING"],
+            ReadFormat::Html => &[HTML, "text/html;charset=utf-8"],
+        };
+        self.receive(mime_types, revision)
     }
 
     fn write(

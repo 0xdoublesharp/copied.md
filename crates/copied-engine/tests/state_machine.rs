@@ -74,6 +74,7 @@ struct Open {
     target: CopyTarget,
     suggested: Option<CopyTarget>,
     auto: Option<CopiedSummary>,
+    preview: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -123,7 +124,10 @@ impl Model {
         if self.active.is_some() {
             return Err(EngineError::Busy);
         }
-        let source = self.clipboard.text();
+        let source = match &self.clipboard {
+            Clipboard::Converted { source, .. } => source.clone(),
+            clipboard => clipboard.text(),
+        };
         if source.trim().is_empty() {
             return Err(self.error(WriteError::Empty));
         }
@@ -149,7 +153,7 @@ impl Model {
         let id = OpId(self.opens.len() as u64 + 1);
         self.active = Some(ActiveSession {
             op_id: id,
-            original_markdown: source,
+            original_markdown: source.clone(),
             expected_revision: self.revision,
             auto_copied: auto.as_ref().map(|summary| summary.target),
         });
@@ -158,6 +162,7 @@ impl Model {
             target,
             suggested: (pinned && mode == ShortcutCopyMode::Picker).then_some(target),
             auto,
+            preview: Some(source),
         });
         Ok(CopyOutcome::PickerOpened(id))
     }
@@ -390,6 +395,7 @@ impl PickerHost for CountingPicker {
             target: request.selected,
             suggested: request.suggested,
             auto: request.copied,
+            preview: request.source_preview,
         });
     }
 

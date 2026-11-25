@@ -16,6 +16,7 @@ pub mod limits;
 mod render;
 mod url;
 
+pub use html::to_markdown::html_to_markdown;
 pub use render::unicode::{to_bold, to_bold_italic, to_italic};
 pub use render::xlen::weighted_length as x_weighted_length;
 pub use url::safe_url;

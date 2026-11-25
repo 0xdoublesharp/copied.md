@@ -12,7 +12,7 @@ use objc2_foundation::{NSArray, NSData, NSString};
 use crate::{
     Board, ClipboardSnapshot, Revision, WriteError, WrittenClipboard,
     bundle::{Bundle, prepare_bundle},
-    require_revision, stable_snapshot,
+    require_revision, stable_optional_snapshot, stable_snapshot,
 };
 
 const CHROMIUM_CUSTOM_DATA: &str = "org.chromium.web-custom-data";
@@ -124,6 +124,27 @@ impl Board for MacPasteboard {
         })
     }
 
+    #[allow(unsafe_code)]
+    fn read_html(&self) -> Result<Option<ClipboardSnapshot>, WriteError> {
+        autoreleasepool(|_| {
+            let board = self.pasteboard();
+            stable_optional_snapshot(
+                || revision(board.changeCount()),
+                || {
+                    // SAFETY: AppKit supplies this immutable pasteboard type string.
+                    let html = unsafe { NSPasteboardTypeHTML };
+                    board
+                        .dataForType(html)
+                        .map(|data| {
+                            String::from_utf8(data.to_vec())
+                                .map_err(|error| WriteError::Unavailable(error.to_string()))
+                        })
+                        .transpose()
+                },
+            )
+        })
+    }
+
     fn write(
         &mut self,
         payload: &ClipboardPayload,
@@ -213,10 +234,11 @@ mod tests {
     fn native_pasteboard_and_stale_guard() {
         let mut board = MacPasteboard::unique();
         assert_eq!(board.read_text(), Err(WriteError::Empty));
+        assert_eq!(board.read_html(), Ok(None));
         let old = board.revision().unwrap();
         let payload = ClipboardPayload {
             plain: "e\u{301}\n👩🏽‍💻".into(),
-            html: Some("<p>Example</p>".into()),
+            html: Some("<p>Café 🌍</p>".into()),
             rtf: Some(r"{\rtf1 Example}".into()),
             ..ClipboardPayload::default()
         };
@@ -229,6 +251,13 @@ mod tests {
                 revision: written.revision
             }
         );
+        assert_eq!(
+            board.read_html().unwrap(),
+            Some(ClipboardSnapshot {
+                text: payload.html.unwrap(),
+                revision: written.revision,
+            })
+        );
         autoreleasepool(|_| {
             let native = board.pasteboard();
             assert_eq!(
@@ -236,7 +265,7 @@ mod tests {
                     .stringForType(&NSString::from_str("public.html"))
                     .unwrap()
                     .to_string(),
-                "<p>Example</p>"
+                "<p>Café 🌍</p>"
             );
             assert_eq!(
                 native
@@ -262,6 +291,7 @@ mod tests {
             }
         });
         assert_eq!(board.read_text().unwrap().text, "plain");
+        assert_eq!(board.read_html(), Ok(None));
     }
 
     #[test]

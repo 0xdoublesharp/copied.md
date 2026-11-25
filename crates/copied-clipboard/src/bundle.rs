@@ -51,6 +51,19 @@ pub(crate) fn windows_html(fragment: &str) -> Vec<u8> {
     html
 }
 
+#[cfg(any(test, target_os = "windows"))]
+pub(crate) fn windows_html_fragment(bytes: &[u8]) -> Result<String, WriteError> {
+    let end = bytes
+        .iter()
+        .position(|&byte| byte == 0)
+        .unwrap_or(bytes.len());
+    let envelope = std::str::from_utf8(&bytes[..end])
+        .map_err(|error| WriteError::Unavailable(error.to_string()))?;
+    let offsets = copied_codec::cf_html::parse_cf_html(envelope)
+        .map_err(|error| WriteError::Unavailable(error.to_string()))?;
+    Ok(envelope[offsets.start_fragment..offsets.end_fragment].to_owned())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -76,12 +89,10 @@ mod tests {
         let html = windows_html(fragment);
         let envelope = std::str::from_utf8(html.strip_suffix(&[0]).unwrap()).unwrap();
         assert_eq!(envelope, copied_codec::cf_html::encode_cf_html(fragment));
-        if envelope != fragment {
-            let offsets = copied_codec::cf_html::parse_cf_html(envelope).unwrap();
-            assert_eq!(
-                &envelope[offsets.start_fragment..offsets.end_fragment],
-                fragment
-            );
-        }
+        assert_eq!(windows_html_fragment(&html).unwrap(), fragment);
+        assert!(matches!(
+            windows_html_fragment(b"invalid\0"),
+            Err(WriteError::Unavailable(_))
+        ));
     }
 }

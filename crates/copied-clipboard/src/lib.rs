@@ -39,6 +39,11 @@ pub enum WriteError {
 pub trait Board: Send {
     fn revision(&self) -> Result<Revision, WriteError>;
     fn read_text(&self) -> Result<ClipboardSnapshot, WriteError>;
+    /// Reads the HTML representation and its revision, if the clipboard offers one.
+    fn read_html(&self) -> Result<Option<ClipboardSnapshot>, WriteError> {
+        Ok(None)
+    }
+
     fn write(
         &mut self,
         payload: &ClipboardPayload,
@@ -78,16 +83,24 @@ fn require_revision(expected: Option<Revision>, actual: Revision) -> Result<(), 
     Ok(())
 }
 
-#[cfg(any(test, target_os = "macos", target_os = "windows"))]
+#[cfg(any(test, target_os = "macos"))]
 fn stable_snapshot(
     revision: impl Fn() -> Result<Revision, WriteError>,
     read: impl FnOnce() -> Result<Option<String>, WriteError>,
 ) -> Result<ClipboardSnapshot, WriteError> {
+    stable_optional_snapshot(revision, read)?.ok_or(WriteError::Empty)
+}
+
+#[cfg(any(test, target_os = "macos", target_os = "windows"))]
+fn stable_optional_snapshot(
+    revision: impl Fn() -> Result<Revision, WriteError>,
+    read: impl FnOnce() -> Result<Option<String>, WriteError>,
+) -> Result<Option<ClipboardSnapshot>, WriteError> {
     let initial = revision()?;
     let text = read();
     require_revision(Some(initial), revision()?)?;
-    Ok(ClipboardSnapshot {
-        text: text?.ok_or(WriteError::Empty)?,
+    Ok(text?.map(|text| ClipboardSnapshot {
+        text,
         revision: initial,
-    })
+    }))
 }

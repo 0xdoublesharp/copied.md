@@ -725,12 +725,14 @@ struct Info<'a> {
     after: &'a str,
 }
 
+#[derive(Default)]
 struct Serializer {
     stack: Vec<&'static str>,
     index_stack: Vec<usize>,
     bullet_current: Option<char>,
     bullet_last_used: Option<char>,
     encode_surrounding: Option<(bool, bool)>,
+    clipboard: bool,
 }
 
 impl Serializer {
@@ -1184,7 +1186,9 @@ impl Serializer {
         value.push('\n');
         if !raw.is_empty() {
             value.push_str(raw);
-            value.push('\n');
+            if !self.clipboard || !raw.ends_with('\n') {
+                value.push('\n');
+            }
         }
         value.push_str(&sequence);
         self.exit();
@@ -1265,14 +1269,10 @@ impl Serializer {
         if let Some(Node::List {
             ordered: true,
             start,
-            children: siblings,
             ..
         }) = parent
         {
-            let index = siblings
-                .iter()
-                .position(|s| std::ptr::eq(s, node))
-                .unwrap_or(0);
+            let index = self.index_stack.last().copied().unwrap_or(0);
             bullet = format!("{}{bullet}", u64::from(start.unwrap_or(1)) + index as u64);
         }
         let size = bullet.chars().count() + 1;
@@ -1387,7 +1387,11 @@ impl Serializer {
             matrix.push(values);
         }
         self.exit();
-        markdown_table(&matrix, align)
+        if self.clipboard {
+            compact_table(&matrix, align)
+        } else {
+            markdown_table(&matrix, align)
+        }
     }
 }
 
@@ -1521,6 +1525,51 @@ fn markdown_table(matrix: &[Vec<String>], align: &[Align]) -> String {
     lines.join("\n")
 }
 
+fn compact_table(matrix: &[Vec<String>], align: &[Align]) -> String {
+    fn cell(table: &mut String, value: &str) {
+        if !value.is_empty() {
+            table.push(' ');
+            table.push_str(value);
+        }
+        table.push_str(" |");
+    }
+
+    let Some((header, rows)) = matrix.split_first() else {
+        return String::new();
+    };
+    let mut table = String::from("|");
+    for column in 0..align.len() {
+        cell(&mut table, header.get(column).map_or("", String::as_str));
+    }
+    table.push_str("\n|");
+    for alignment in align {
+        cell(
+            &mut table,
+            match alignment {
+                Align::None => "---",
+                Align::Left => ":---",
+                Align::Right => "---:",
+                Align::Center => ":---:",
+            },
+        );
+    }
+    for row in rows {
+        table.push_str("\n|");
+        for value in row {
+            cell(&mut table, value);
+        }
+    }
+    table
+}
+
+pub(crate) fn serialize_clipboard_markdown(nodes: &[Node]) -> String {
+    Serializer {
+        clipboard: true,
+        ..Serializer::default()
+    }
+    .root(nodes)
+}
+
 /// `renderMarkdown`.
 pub(crate) fn render_markdown(children: &[Node], opts: MarkdownOptions) -> String {
     let numbers = footnote_numbers(children);
@@ -1529,13 +1578,7 @@ pub(crate) fn render_markdown(children: &[Node], opts: MarkdownOptions) -> Strin
         numbers: &numbers,
     }
     .flow(children.to_vec());
-    let mut serializer = Serializer {
-        stack: Vec::new(),
-        index_stack: Vec::new(),
-        bullet_current: None,
-        bullet_last_used: None,
-        encode_surrounding: None,
-    };
+    let mut serializer = Serializer::default();
     js_trim_end(&serializer.root(&prepared)).to_owned()
 }
 
@@ -1600,13 +1643,7 @@ mod tests {
     }
 
     fn serialize(nodes: &[Node]) -> String {
-        let mut serializer = Serializer {
-            stack: Vec::new(),
-            index_stack: Vec::new(),
-            bullet_current: None,
-            bullet_last_used: None,
-            encode_surrounding: None,
-        };
+        let mut serializer = Serializer::default();
         serializer.root(nodes)
     }
 
@@ -1760,10 +1797,7 @@ mod tests {
     fn escapes_with_every_unsafe_condition() {
         let serializer = Serializer {
             stack: vec!["paragraph", "phrasing"],
-            index_stack: Vec::new(),
-            bullet_current: None,
-            bullet_last_used: None,
-            encode_surrounding: None,
+            ..Serializer::default()
         };
         let safe = |value: &str| serializer.safe(value, "\n", "\n", &[]);
         assert_eq!(safe("a](b"), "a]\\(b");

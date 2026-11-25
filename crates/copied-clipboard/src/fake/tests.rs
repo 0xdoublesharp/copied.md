@@ -101,6 +101,7 @@ fn reports_rejection_after_clear() {
 fn omits_empty_flavors_and_rejects_stale_or_empty_writes() {
     let mut board = FakeBoard::default();
     assert_eq!(board.read_text(), Err(WriteError::Empty));
+    assert_eq!(board.read_html(), Ok(None));
     let values = [
         "**Ready**",
         "👩🏽‍💻 🛰️",
@@ -122,6 +123,17 @@ fn omits_empty_flavors_and_rejects_stale_or_empty_writes() {
         assert_eq!(snapshot.text, value);
         assert_ne!(snapshot.revision, expected);
         assert_eq!(snapshot.revision, written.revision);
+        assert_eq!(
+            board.read_html(),
+            Ok(item
+                .html
+                .clone()
+                .filter(|_| rich)
+                .map(|text| ClipboardSnapshot {
+                    text,
+                    revision: written.revision,
+                }))
+        );
         let mut types = vec!["text/plain"];
         if rich {
             types.extend(["text/html", "text/rtf", "text/signal"]);

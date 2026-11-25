@@ -1,8 +1,8 @@
 use copied_clipboard::{Board, Revision, WriteError};
 use copied_config::{ConfigV2, ShortcutCopyMode, resolve_shortcut_target, visible_formats};
 use copied_core::{
-    ConversionOptions, CopyTarget, CopyTargetDefinition, DiagnosticSeverity, MarkdownConversion,
-    convert_markdown,
+    ClipboardPayload, ConversionOptions, CopyTarget, CopyTargetDefinition, DiagnosticSeverity,
+    MarkdownConversion, convert_markdown, html_to_markdown,
 };
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
@@ -36,6 +36,8 @@ pub struct PickerOpenRequest {
     pub copied: Option<CopiedSummary>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub suggested: Option<CopyTarget>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_preview: Option<String>,
 }
 
 /// Picker window controller (never called in `ShortcutCopyMode::CopyOnly`).
@@ -73,6 +75,14 @@ pub struct ActiveSession {
     pub auto_copied: Option<CopyTarget>,
 }
 
+/// The original Markdown and the clipboard generation that holds its latest conversion.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RecentSource {
+    pub markdown: String,
+    pub written_revision: Revision,
+    pub target: CopyTarget,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum CopyOutcome {
     Copied(CopiedSummary),
@@ -83,6 +93,8 @@ pub enum CopyOutcome {
 
 pub type Converter = fn(&str, CopyTarget, &ConversionOptions) -> MarkdownConversion;
 
+const SOURCE_PREVIEW_BYTES: usize = 2_000;
+
 /// Single-flight clipboard operations backed by a revision-checked board.
 #[derive(Debug)]
 pub struct CopyEngine<B: Board, P: PickerHost, N: Notifier> {
@@ -92,6 +104,7 @@ pub struct CopyEngine<B: Board, P: PickerHost, N: Notifier> {
     pub config: ConfigV2,
     pub next_op_id: u64,
     pub active: Option<ActiveSession>,
+    last_source: Option<RecentSource>,
     converter: Converter,
 }
 
@@ -104,6 +117,7 @@ impl<B: Board, P: PickerHost, N: Notifier> CopyEngine<B, P, N> {
             config,
             next_op_id: 1,
             active: None,
+            last_source: None,
             converter: convert_markdown,
         }
     }
@@ -122,6 +136,10 @@ impl<B: Board, P: PickerHost, N: Notifier> CopyEngine<B, P, N> {
         self.config.shortcut_mode
     }
 
+    pub fn last_source(&self) -> Option<&RecentSource> {
+        self.last_source.as_ref()
+    }
+
     pub fn start_copy(
         &mut self,
         mode: ShortcutCopyMode,
@@ -133,7 +151,13 @@ impl<B: Board, P: PickerHost, N: Notifier> CopyEngine<B, P, N> {
         let snapshot = self
             .board
             .read_text()
-            .and_then(|snapshot| {
+            .and_then(|mut snapshot| {
+                if let Some(recent) = self
+                    .last_source()
+                    .filter(|recent| recent.written_revision == snapshot.revision)
+                {
+                    snapshot.text.clone_from(&recent.markdown);
+                }
                 if snapshot.text.trim().is_empty() {
                     Err(WriteError::Empty)
                 } else {
@@ -168,6 +192,8 @@ impl<B: Board, P: PickerHost, N: Notifier> CopyEngine<B, P, N> {
             (None, resolved.from_pin.then_some(target), snapshot.revision)
         };
 
+        let preview_end = snapshot.text.floor_char_boundary(SOURCE_PREVIEW_BYTES);
+        let source_preview = Some(snapshot.text[..preview_end].to_owned());
         self.next_op_id = next_op_id;
         self.active = Some(ActiveSession {
             op_id,
@@ -185,6 +211,7 @@ impl<B: Board, P: PickerHost, N: Notifier> CopyEngine<B, P, N> {
             selected: target,
             copied,
             suggested,
+            source_preview,
         });
         Ok(CopyOutcome::PickerOpened(op_id))
     }
@@ -213,6 +240,32 @@ impl<B: Board, P: PickerHost, N: Notifier> CopyEngine<B, P, N> {
         Ok(())
     }
 
+    /// Converts the clipboard's HTML representation and replaces it with Markdown text.
+    pub fn convert_html_to_markdown(&mut self) -> Result<String, EngineError> {
+        if self.is_busy() {
+            return Err(EngineError::Busy);
+        }
+        let (markdown, revision) = self
+            .board
+            .read_html()
+            .and_then(|snapshot| {
+                let snapshot = snapshot.ok_or(WriteError::Empty)?;
+                let markdown = html_to_markdown(&snapshot.text);
+                if markdown.is_empty() {
+                    return Err(WriteError::Empty);
+                }
+                Ok((markdown, snapshot.revision))
+            })
+            .inspect_err(|error| self.notifier.error(&error.to_string()))?;
+        let payload = ClipboardPayload {
+            plain: markdown.clone(),
+            ..ClipboardPayload::default()
+        };
+        self.write(&markdown, CopyTarget::PlainText, &payload, revision)?;
+        self.notifier.mark_copied(CopyTarget::PlainText);
+        Ok(markdown)
+    }
+
     fn close_picker(&mut self, op_id: OpId) -> Result<ActiveSession, EngineError> {
         let session = self
             .active
@@ -230,10 +283,12 @@ impl<B: Board, P: PickerHost, N: Notifier> CopyEngine<B, P, N> {
         remember_target: bool,
     ) -> Result<(CopiedSummary, Revision), EngineError> {
         let conversion = (self.converter)(original, target, &ConversionOptions::default());
-        let written = self
-            .board
-            .write(&conversion.representations, Some(expected_revision))
-            .inspect_err(|error| self.notifier.error(&error.to_string()))?;
+        let revision = self.write(
+            original,
+            target,
+            &conversion.representations,
+            expected_revision,
+        )?;
         if remember_target {
             self.config.last_target = Some(target);
         }
@@ -247,7 +302,26 @@ impl<B: Board, P: PickerHost, N: Notifier> CopyEngine<B, P, N> {
                 .find(|diagnostic| diagnostic.severity == DiagnosticSeverity::Warning)
                 .map(|diagnostic| diagnostic.message),
         };
-        Ok((summary, written.revision))
+        Ok((summary, revision))
+    }
+
+    fn write(
+        &mut self,
+        original: &str,
+        target: CopyTarget,
+        payload: &ClipboardPayload,
+        expected_revision: Revision,
+    ) -> Result<Revision, EngineError> {
+        let written = self
+            .board
+            .write(payload, Some(expected_revision))
+            .inspect_err(|error| self.notifier.error(&error.to_string()))?;
+        self.last_source = Some(RecentSource {
+            markdown: original.to_owned(),
+            written_revision: written.revision,
+            target,
+        });
+        Ok(written.revision)
     }
 
     fn present_warning(&mut self, summary: &CopiedSummary) {

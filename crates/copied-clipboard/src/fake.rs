@@ -60,6 +60,17 @@ impl Board for FakeBoard {
         })
     }
 
+    fn read_html(&self) -> Result<Option<ClipboardSnapshot>, WriteError> {
+        Ok(self
+            .payload
+            .as_ref()
+            .and_then(|payload| payload.html.clone())
+            .map(|text| ClipboardSnapshot {
+                text,
+                revision: Revision(self.revision),
+            }))
+    }
+
     fn write(
         &mut self,
         payload: &ClipboardPayload,
