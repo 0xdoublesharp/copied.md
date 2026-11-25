@@ -215,9 +215,12 @@ dependencies = [
  "copied-clipboard",
  "copied-config",
  "copied-core",
+ "rustix",
  "serde",
  "serde_json",
+ "tempfile",
  "thiserror",
+ "url",
 ]
 
 [[package]]
