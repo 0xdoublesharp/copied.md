@@ -59,7 +59,7 @@ For rich clipboard output in a local macOS VS Code window, build the pasteboard 
 
 ## CLI and MCP
 
-Run `pnpm package:cli` and install the generated tarball with `npm install -g ./0xdoublesharp-copied-md-cli-1.0.1.tgz`.
+Run `pnpm package:cli` and install the generated tarball with `npm install -g ./0xdoublesharp-copied-md-cli-1.1.0.tgz`.
 
 ```sh
 copied-md targets
