@@ -45,24 +45,22 @@ pub(crate) fn read_markdown(markdown: &str, source_url: Option<&str>) -> Documen
         };
         to_mdast(&source, &ParseOptions::gfm())
             .ok()
+            .filter(|tree| ast::mdast_depth(tree) <= limits::MAX_NESTING_DEPTH * 2)
             .map(|tree| ast::root_children(&tree))
     } else {
         None
     };
-    let mut children = match parsed {
-        Some(children) if ast::depth(&children) <= limits::MAX_NESTING_DEPTH * 2 => children,
-        _ => {
-            let limit = limit.unwrap_or(limits::Limit::Depth);
-            let children = if markdown.is_empty() {
-                Vec::new()
-            } else {
-                vec![Node::Paragraph(vec![Node::Text(markdown.to_owned())])]
-            };
-            return Document {
-                children,
-                diagnostics: vec![limit_diagnostic(limit)],
-            };
-        }
+    let Some(mut children) = parsed else {
+        let limit = limit.unwrap_or(limits::Limit::Depth);
+        let children = if markdown.is_empty() {
+            Vec::new()
+        } else {
+            vec![Node::Paragraph(vec![Node::Text(markdown.to_owned())])]
+        };
+        return Document {
+            children,
+            diagnostics: vec![limit_diagnostic(limit)],
+        };
     };
 
     let mut definitions: HashMap<String, (String, Option<String>)> = HashMap::new();

@@ -6,3 +6,5 @@
 # everyone who runs the test benefits from these saved cases.
 cc 459369043807eedea06cce37a22864d514669b0c244a7f26634ae42c16a6b460 # shrinks to source = "\u{fdd0}forged\u{fdd2} \u{fdd1} <span data-spoiler=\"true\">s</span> \0", has_url = false, decorative_unicode = false
 cc 714cd9314f42e04814e89ebe8aa76a453003ae8fbf827754e25fb277ba7c263f # shrinks to source = "Before <span data-spoiler=\"true\">covered</span> after.\n\n*ࠀ*", has_url = false, decorative_unicode = false
+cc 4345aad9c40f167b36574ad2b671bcdbdc93e280e242caf82131e182ff7ebfcd # shrinks to source = "| A | B |\n|---|---|\n| a | b |\n\n<div>a <span data-spoiler=\"true\">Zq9Spoiler\nZq9Spoiler</span> b</div>", has_url = false
+cc 7ec8d7ab7a0ca82e8ad358619a14a5c9006c3dfb8e3f7af8d2f59230c5230851 # shrinks to source = "<A>\n\n<b><i><u>deep</u></i></b> <iframe src=\"javascript:x\"></iframe><svg><a href=\"javascript:x\">s</a></svg>", has_url = false, decorative_unicode = false

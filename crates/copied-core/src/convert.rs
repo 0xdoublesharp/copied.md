@@ -62,12 +62,13 @@ pub(crate) fn convert(
     let mut diagnostics = document.diagnostics.clone();
     let images = has_images(children);
 
+    // Validity comes from the uncollapsed Signal render: collapsing repeated bold
+    // can hide a spoiler that crosses emphasis the Markdown targets still emit.
     let malformed = spoiler_target
         && signal_spoiler_fallback(&render_text(
             children,
             TextOptions {
                 signal: true,
-                improved,
                 ..TextOptions::default()
             },
         ))

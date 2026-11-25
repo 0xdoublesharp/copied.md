@@ -264,6 +264,11 @@ fn spoiler_context() -> impl Strategy<Value = String> {
         format!("{open}a||{TOKEN}</span> {open}b!<{TOKEN}</span>"),
         format!("<SPAN DATA-SPOILER='TRUE'>{TOKEN}</SPAN>"),
         format!("{open}\u{FDD2}{TOKEN}</span>"),
+        format!("# **a {open}{TOKEN}** c</span>"),
+        format!("**x __a {open}{TOKEN}__ c</span>**"),
+        format!("```\n~~~\n```\n\n| a | {open}{TOKEN}</span> |\n|---|---|\n| c | d |"),
+        format!("````\n```\n````\n\n| a | {open}{TOKEN}</span> |\n|---|---|\n| c | d |"),
+        format!("{open} {TOKEN} </span>"),
     ];
     prop::sample::select(contexts)
 }
@@ -334,6 +339,46 @@ fn signal_regions(html: &str) -> Vec<(usize, usize)> {
     regions
 }
 
+/// Byte ranges inside fenced code blocks (`CommonMark` fence rules, ignoring
+/// container prefixes such as `>` and list indentation).
+fn fenced_regions(text: &str) -> Vec<(usize, usize)> {
+    let mut regions = Vec::new();
+    let mut open: Option<(char, usize, usize)> = None;
+    let mut offset = 0;
+    for line in text.split_inclusive('\n') {
+        let trimmed = line.trim_start_matches(|c: char| c == '>' || c.is_whitespace());
+        let fence_char = trimmed.chars().next().filter(|c| *c == '`' || *c == '~');
+        let run = fence_char.map_or(0, |c| trimmed.chars().take_while(|&x| x == c).count());
+        match (open, fence_char) {
+            (None, Some(c)) if run >= 3 => open = Some((c, run, offset + line.len())),
+            (Some((c, len, start)), Some(found))
+                if found == c && run >= len && trimmed[run * c.len_utf8()..].trim().is_empty() =>
+            {
+                regions.push((start, offset));
+                open = None;
+            }
+            _ => {}
+        }
+        offset += line.len();
+    }
+    if let Some((_, _, start)) = open {
+        regions.push((start, text.len()));
+    }
+    regions
+}
+
+fn assert_not_in_code(value: &str, what: &str) {
+    let fenced = fenced_regions(value);
+    for (index, _) in value.match_indices(TOKEN) {
+        assert!(
+            !fenced
+                .iter()
+                .any(|&(start, end)| index >= start && index < end),
+            "spoiler text shown inside a code block in {what}: {value:?}"
+        );
+    }
+}
+
 fn assert_hidden(value: &str, regions: &[(usize, usize)], what: &str) {
     for (index, _) in value.match_indices(TOKEN) {
         assert!(
@@ -368,8 +413,10 @@ proptest! {
 
         let discord = convert_markdown(&source, CopyTarget::Discord, &options).representations.plain;
         assert_hidden(&discord, &paired_regions(&discord, "||", "||"), "discord");
+        assert_not_in_code(&discord, "discord");
 
         let reddit = convert_markdown(&source, CopyTarget::Reddit, &options).representations.plain;
         assert_hidden(&reddit, &paired_regions(&reddit, ">!", "!<"), "reddit");
+        assert_not_in_code(&reddit, "reddit");
     }
 }

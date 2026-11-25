@@ -4,7 +4,7 @@
 //! `emphasis: '*'`, `fences: true` and `listItemIndent: 'one'`.
 
 use super::spoilers::{
-    CLOSE_SPAN, OPEN_SPAN, OPEN_SPOILER, is_spoiler_span, partial_spoiler_start,
+    CLOSE_SPAN, OPEN_OMITTED, OPEN_SPAN, OPEN_SPOILER, is_spoiler_span, partial_spoiler_start,
 };
 use super::text::{TextOptions, render_text};
 use crate::ast::{Align, Node};
@@ -82,6 +82,29 @@ impl Prepare<'_> {
         )
     }
 
+    /// Prepares a flow container's children (root, quote, item).
+    fn flow(&self, nodes: Vec<Node>) -> Vec<Node> {
+        if !self.opts.improved {
+            return self.nodes(nodes);
+        }
+        // Keep raw HTML blocks as their own paragraphs. The oracle turned them
+        // into bare text, which makes the root phrasing and glues every block
+        // together (and can leave a code fence unclosed).
+        let mut out = Vec::with_capacity(nodes.len());
+        for node in nodes {
+            match node {
+                Node::Html(value) => {
+                    let text = js_trim_end(&self.html_value(&value)).to_owned();
+                    if !text.is_empty() {
+                        out.push(Node::Paragraph(vec![Node::Text(text)]));
+                    }
+                }
+                other => out.extend(self.nodes(vec![other])),
+            }
+        }
+        out
+    }
+
     fn nodes(&self, nodes: Vec<Node>) -> Vec<Node> {
         let mut out = Vec::with_capacity(nodes.len());
         for node in nodes {
@@ -129,6 +152,8 @@ impl Prepare<'_> {
                     } else {
                         render_text(std::slice::from_ref(&table), sub_text_options(self.opts))
                     };
+                    // A spoiler marker inside a code block would show literally.
+                    let value = value.replace(OPEN_SPOILER, &OPEN_OMITTED.to_string());
                     out.push(Node::Code {
                         value,
                         lang: None,
@@ -160,9 +185,14 @@ impl Prepare<'_> {
                     });
                 }
                 mut other => {
+                    let flow = matches!(other, Node::Blockquote(_) | Node::ListItem { .. });
                     if let Some(children) = other.children_mut() {
                         let taken = std::mem::take(children);
-                        *children = self.nodes(taken);
+                        *children = if flow {
+                            self.flow(taken)
+                        } else {
+                            self.nodes(taken)
+                        };
                     }
                     out.push(other);
                 }
@@ -1498,7 +1528,7 @@ pub(crate) fn render_markdown(children: &[Node], opts: MarkdownOptions) -> Strin
         opts,
         numbers: &numbers,
     }
-    .nodes(children.to_vec());
+    .flow(children.to_vec());
     let mut serializer = Serializer {
         stack: Vec::new(),
         index_stack: Vec::new(),

@@ -400,11 +400,11 @@
   "signal-spoilers-malformed|with-source-url|telegram|text/plain": "Before [spoiler omitted]",
   "signal-spoilers-malformed|with-source-url|telegram|text/rtf": "{\\rtf1\\ansi\\deff0{\\fonttbl{\\f0\\fswiss Helvetica;}{\\f1\\fmodern Courier;}}\\uc1\\f0 Before [spoiler omitted]}",
   "signal-spoilers-valid|decorative-unicode|discord|metrics": {
-    "outputLength": 120,
+    "outputLength": 123,
     "sourceCodeUnits": 192,
     "unit": "code-points"
   },
-  "signal-spoilers-valid|decorative-unicode|discord|text/plain": "Before ||**secret** `code`|| after.Block ||hidden\nline|| public.\nLiteral `<span data-spoiler=\"true\">not spoiler</span>`.",
+  "signal-spoilers-valid|decorative-unicode|discord|text/plain": "Before ||**secret** `code`|| after.\n\nBlock ||hidden\nline|| public.\n\nLiteral `<span data-spoiler=\"true\">not spoiler</span>`.",
   "signal-spoilers-valid|decorative-unicode|reddit|diagnostics": [
     {
       "code": "spoiler-omitted",
@@ -413,11 +413,11 @@
     }
   ],
   "signal-spoilers-valid|decorative-unicode|reddit|metrics": {
-    "outputLength": 122,
+    "outputLength": 125,
     "sourceCodeUnits": 192,
     "unit": "code-points"
   },
-  "signal-spoilers-valid|decorative-unicode|reddit|text/plain": "Before >!**secret** `code`!< after.Block [spoiler omitted] public.\nLiteral `<span data-spoiler=\"true\">not spoiler</span>`.",
+  "signal-spoilers-valid|decorative-unicode|reddit|text/plain": "Before >!**secret** `code`!< after.\n\nBlock [spoiler omitted] public.\n\nLiteral `<span data-spoiler=\"true\">not spoiler</span>`.",
   "signal-spoilers-valid|decorative-unicode|teams|text/html": "<p>Before <span><strong>secret</strong> <code style=\"font-family: monospace; background-color: #f4f4f4;\">code</code></span> after.</p>\n<div>Block <span>hidden\nline</span> public.</div>\n<p>Literal <code style=\"font-family: monospace; background-color: #f4f4f4;\">&#x3C;span data-spoiler=\"true\">not spoiler&#x3C;/span></code>.</p>",
   "signal-spoilers-valid|decorative-unicode|telegram|diagnostics": [
     {
@@ -436,11 +436,11 @@
   "signal-spoilers-valid|decorative-unicode|telegram|text/rtf": "{\\rtf1\\ansi\\deff0{\\fonttbl{\\f0\\fswiss Helvetica;}{\\f1\\fmodern Courier;}}\\uc1\\f0 Before [spoiler omitted] after.\\par\n\\par\nBlock [spoiler omitted] public.\\par\n\\par\nLiteral {\\f1 <span data-spoiler=\"true\">not spoiler</span>}.}",
   "signal-spoilers-valid|decorative-unicode|word|text/html": "<p>Before <span><strong>secret</strong> <code style=\"font-family: Consolas, monospace; background-color: #f4f4f4;\">code</code></span> after.</p>\n<div>Block <span>hidden\nline</span> public.</div>\n<p>Literal <code style=\"font-family: Consolas, monospace; background-color: #f4f4f4;\">&#x3C;span data-spoiler=\"true\">not spoiler&#x3C;/span></code>.</p>",
   "signal-spoilers-valid|default|discord|metrics": {
-    "outputLength": 120,
+    "outputLength": 123,
     "sourceCodeUnits": 192,
     "unit": "code-points"
   },
-  "signal-spoilers-valid|default|discord|text/plain": "Before ||**secret** `code`|| after.Block ||hidden\nline|| public.\nLiteral `<span data-spoiler=\"true\">not spoiler</span>`.",
+  "signal-spoilers-valid|default|discord|text/plain": "Before ||**secret** `code`|| after.\n\nBlock ||hidden\nline|| public.\n\nLiteral `<span data-spoiler=\"true\">not spoiler</span>`.",
   "signal-spoilers-valid|default|reddit|diagnostics": [
     {
       "code": "spoiler-omitted",
@@ -449,11 +449,11 @@
     }
   ],
   "signal-spoilers-valid|default|reddit|metrics": {
-    "outputLength": 122,
+    "outputLength": 125,
     "sourceCodeUnits": 192,
     "unit": "code-points"
   },
-  "signal-spoilers-valid|default|reddit|text/plain": "Before >!**secret** `code`!< after.Block [spoiler omitted] public.\nLiteral `<span data-spoiler=\"true\">not spoiler</span>`.",
+  "signal-spoilers-valid|default|reddit|text/plain": "Before >!**secret** `code`!< after.\n\nBlock [spoiler omitted] public.\n\nLiteral `<span data-spoiler=\"true\">not spoiler</span>`.",
   "signal-spoilers-valid|default|teams|text/html": "<p>Before <span><strong>secret</strong> <code style=\"font-family: monospace; background-color: #f4f4f4;\">code</code></span> after.</p>\n<div>Block <span>hidden\nline</span> public.</div>\n<p>Literal <code style=\"font-family: monospace; background-color: #f4f4f4;\">&#x3C;span data-spoiler=\"true\">not spoiler&#x3C;/span></code>.</p>",
   "signal-spoilers-valid|default|telegram|diagnostics": [
     {
@@ -472,11 +472,11 @@
   "signal-spoilers-valid|default|telegram|text/rtf": "{\\rtf1\\ansi\\deff0{\\fonttbl{\\f0\\fswiss Helvetica;}{\\f1\\fmodern Courier;}}\\uc1\\f0 Before [spoiler omitted] after.\\par\n\\par\nBlock [spoiler omitted] public.\\par\n\\par\nLiteral {\\f1 <span data-spoiler=\"true\">not spoiler</span>}.}",
   "signal-spoilers-valid|default|word|text/html": "<p>Before <span><strong>secret</strong> <code style=\"font-family: Consolas, monospace; background-color: #f4f4f4;\">code</code></span> after.</p>\n<div>Block <span>hidden\nline</span> public.</div>\n<p>Literal <code style=\"font-family: Consolas, monospace; background-color: #f4f4f4;\">&#x3C;span data-spoiler=\"true\">not spoiler&#x3C;/span></code>.</p>",
   "signal-spoilers-valid|source-url-and-unicode|discord|metrics": {
-    "outputLength": 120,
+    "outputLength": 123,
     "sourceCodeUnits": 192,
     "unit": "code-points"
   },
-  "signal-spoilers-valid|source-url-and-unicode|discord|text/plain": "Before ||**secret** `code`|| after.Block ||hidden\nline|| public.\nLiteral `<span data-spoiler=\"true\">not spoiler</span>`.",
+  "signal-spoilers-valid|source-url-and-unicode|discord|text/plain": "Before ||**secret** `code`|| after.\n\nBlock ||hidden\nline|| public.\n\nLiteral `<span data-spoiler=\"true\">not spoiler</span>`.",
   "signal-spoilers-valid|source-url-and-unicode|reddit|diagnostics": [
     {
       "code": "spoiler-omitted",
@@ -485,11 +485,11 @@
     }
   ],
   "signal-spoilers-valid|source-url-and-unicode|reddit|metrics": {
-    "outputLength": 122,
+    "outputLength": 125,
     "sourceCodeUnits": 192,
     "unit": "code-points"
   },
-  "signal-spoilers-valid|source-url-and-unicode|reddit|text/plain": "Before >!**secret** `code`!< after.Block [spoiler omitted] public.\nLiteral `<span data-spoiler=\"true\">not spoiler</span>`.",
+  "signal-spoilers-valid|source-url-and-unicode|reddit|text/plain": "Before >!**secret** `code`!< after.\n\nBlock [spoiler omitted] public.\n\nLiteral `<span data-spoiler=\"true\">not spoiler</span>`.",
   "signal-spoilers-valid|source-url-and-unicode|teams|text/html": "<p>Before <span><strong>secret</strong> <code style=\"font-family: monospace; background-color: #f4f4f4;\">code</code></span> after.</p>\n<div>Block <span>hidden\nline</span> public.</div>\n<p>Literal <code style=\"font-family: monospace; background-color: #f4f4f4;\">&#x3C;span data-spoiler=\"true\">not spoiler&#x3C;/span></code>.</p>",
   "signal-spoilers-valid|source-url-and-unicode|telegram|diagnostics": [
     {
@@ -508,11 +508,11 @@
   "signal-spoilers-valid|source-url-and-unicode|telegram|text/rtf": "{\\rtf1\\ansi\\deff0{\\fonttbl{\\f0\\fswiss Helvetica;}{\\f1\\fmodern Courier;}}\\uc1\\f0 Before [spoiler omitted] after.\\par\n\\par\nBlock [spoiler omitted] public.\\par\n\\par\nLiteral {\\f1 <span data-spoiler=\"true\">not spoiler</span>}.}",
   "signal-spoilers-valid|source-url-and-unicode|word|text/html": "<p>Before <span><strong>secret</strong> <code style=\"font-family: Consolas, monospace; background-color: #f4f4f4;\">code</code></span> after.</p>\n<div>Block <span>hidden\nline</span> public.</div>\n<p>Literal <code style=\"font-family: Consolas, monospace; background-color: #f4f4f4;\">&#x3C;span data-spoiler=\"true\">not spoiler&#x3C;/span></code>.</p>",
   "signal-spoilers-valid|with-source-url|discord|metrics": {
-    "outputLength": 120,
+    "outputLength": 123,
     "sourceCodeUnits": 192,
     "unit": "code-points"
   },
-  "signal-spoilers-valid|with-source-url|discord|text/plain": "Before ||**secret** `code`|| after.Block ||hidden\nline|| public.\nLiteral `<span data-spoiler=\"true\">not spoiler</span>`.",
+  "signal-spoilers-valid|with-source-url|discord|text/plain": "Before ||**secret** `code`|| after.\n\nBlock ||hidden\nline|| public.\n\nLiteral `<span data-spoiler=\"true\">not spoiler</span>`.",
   "signal-spoilers-valid|with-source-url|reddit|diagnostics": [
     {
       "code": "spoiler-omitted",
@@ -521,11 +521,11 @@
     }
   ],
   "signal-spoilers-valid|with-source-url|reddit|metrics": {
-    "outputLength": 122,
+    "outputLength": 125,
     "sourceCodeUnits": 192,
     "unit": "code-points"
   },
-  "signal-spoilers-valid|with-source-url|reddit|text/plain": "Before >!**secret** `code`!< after.Block [spoiler omitted] public.\nLiteral `<span data-spoiler=\"true\">not spoiler</span>`.",
+  "signal-spoilers-valid|with-source-url|reddit|text/plain": "Before >!**secret** `code`!< after.\n\nBlock [spoiler omitted] public.\n\nLiteral `<span data-spoiler=\"true\">not spoiler</span>`.",
   "signal-spoilers-valid|with-source-url|teams|text/html": "<p>Before <span><strong>secret</strong> <code style=\"font-family: monospace; background-color: #f4f4f4;\">code</code></span> after.</p>\n<div>Block <span>hidden\nline</span> public.</div>\n<p>Literal <code style=\"font-family: monospace; background-color: #f4f4f4;\">&#x3C;span data-spoiler=\"true\">not spoiler&#x3C;/span></code>.</p>",
   "signal-spoilers-valid|with-source-url|telegram|diagnostics": [
     {
@@ -544,11 +544,17 @@
   "signal-spoilers-valid|with-source-url|telegram|text/rtf": "{\\rtf1\\ansi\\deff0{\\fonttbl{\\f0\\fswiss Helvetica;}{\\f1\\fmodern Courier;}}\\uc1\\f0 Before [spoiler omitted] after.\\par\n\\par\nBlock [spoiler omitted] public.\\par\n\\par\nLiteral {\\f1 <span data-spoiler=\"true\">not spoiler</span>}.}",
   "signal-spoilers-valid|with-source-url|word|text/html": "<p>Before <span><strong>secret</strong> <code style=\"font-family: Consolas, monospace; background-color: #f4f4f4;\">code</code></span> after.</p>\n<div>Block <span>hidden\nline</span> public.</div>\n<p>Literal <code style=\"font-family: Consolas, monospace; background-color: #f4f4f4;\">&#x3C;span data-spoiler=\"true\">not spoiler&#x3C;/span></code>.</p>",
   "tables-gfm-and-html|decorative-unicode|discord|metrics": {
-    "outputLength": 167,
+    "outputLength": 169,
     "sourceCodeUnits": 313,
     "unit": "code-points"
   },
-  "tables-gfm-and-html|decorative-unicode|discord|text/plain": "```\nName | Value | Link\n---- | ----- | -------------------------------\nA|B  | x < y | Docs (https://example.org/docs)\nCafé | 100%  | Plain\n```Raw CaptionH1H2\nA\nBBad OK",
+  "tables-gfm-and-html|decorative-unicode|discord|text/plain": "```\nName | Value | Link\n---- | ----- | -------------------------------\nA|B  | x < y | Docs (https://example.org/docs)\nCafé | 100%  | Plain\n```\n\nRaw CaptionH1H2\nA\nBBad OK",
+  "tables-gfm-and-html|decorative-unicode|reddit|metrics": {
+    "outputLength": 246,
+    "sourceCodeUnits": 313,
+    "unit": "code-points"
+  },
+  "tables-gfm-and-html|decorative-unicode|reddit|text/plain": "| Name | Value    | Link                             |\n| ---- | -------- | -------------------------------- |\n| A\\|B | `x < y`  | [Docs](https://example.org/docs) |\n| Café | **100%** | Plain                            |\n\nRaw CaptionH1H2\nA\nBBad OK",
   "tables-gfm-and-html|decorative-unicode|slack-paste|text/html": "<pre><code>Name | Value | Link\n---- | ----- | -------------------------------\nA|B  | x &#x3C; y | Docs (https://example.org/docs)\nCafé | 100%  | Plain</code></pre>\n<pre><code>Raw Caption\nH1  | H2\n--- | -------------------------------\nA B | Bad OK (https://example.org/ok)</code></pre>",
   "tables-gfm-and-html|decorative-unicode|teams|text/html": "<table style=\"border-collapse: collapse;\">\n<thead>\n<tr>\n<th style=\"border: 1px solid #999; padding: 4px 8px; text-align: left;\">Name</th>\n<th style=\"border: 1px solid #999; padding: 4px 8px; text-align: left;\">Value</th>\n<th style=\"border: 1px solid #999; padding: 4px 8px; text-align: left;\">Link</th>\n</tr>\n</thead>\n<tbody>\n<tr>\n<td style=\"border: 1px solid #999; padding: 4px 8px;\">A|B</td>\n<td style=\"border: 1px solid #999; padding: 4px 8px;\"><code style=\"font-family: monospace; background-color: #f4f4f4;\">x &#x3C; y</code></td>\n<td style=\"border: 1px solid #999; padding: 4px 8px;\"><a href=\"https://example.org/docs\">Docs</a></td>\n</tr>\n<tr>\n<td style=\"border: 1px solid #999; padding: 4px 8px;\">Café</td>\n<td style=\"border: 1px solid #999; padding: 4px 8px;\"><strong>100%</strong></td>\n<td style=\"border: 1px solid #999; padding: 4px 8px;\">Plain</td>\n</tr>\n</tbody>\n</table>\n<table style=\"border-collapse: collapse;\">Raw Caption<tbody><tr><th style=\"border: 1px solid #999; padding: 4px 8px; text-align: left;\">H1</th><th style=\"border: 1px solid #999; padding: 4px 8px; text-align: left;\">H2</th></tr><tr><td style=\"border: 1px solid #999; padding: 4px 8px;\">A<br>B</td><td style=\"border: 1px solid #999; padding: 4px 8px;\"><a>Bad</a> <a href=\"https://example.org/ok\">OK</a></td></tr></tbody></table>",
   "tables-gfm-and-html|decorative-unicode|whatsapp|metrics": {
@@ -559,11 +565,17 @@
   "tables-gfm-and-html|decorative-unicode|whatsapp|text/plain": "```Name | Value | Link\n---- | ----- | -------------------------------\nA|B  | x < y | Docs (https://example.org/docs)\nCafé | 100%  | Plain```\n\nRaw CaptionH1H2\nA\nBBad OK",
   "tables-gfm-and-html|decorative-unicode|word|text/html": "<table style=\"border-collapse: collapse; border: 1px solid #999;\">\n<thead>\n<tr>\n<th style=\"border: 1px solid #999; background-color: #eaeaea; padding: 4pt 6pt; text-align: left;\">Name</th>\n<th style=\"border: 1px solid #999; background-color: #eaeaea; padding: 4pt 6pt; text-align: left;\">Value</th>\n<th style=\"border: 1px solid #999; background-color: #eaeaea; padding: 4pt 6pt; text-align: left;\">Link</th>\n</tr>\n</thead>\n<tbody>\n<tr>\n<td style=\"border: 1px solid #999; padding: 4pt 6pt;\">A|B</td>\n<td style=\"border: 1px solid #999; padding: 4pt 6pt;\"><code style=\"font-family: Consolas, monospace; background-color: #f4f4f4;\">x &#x3C; y</code></td>\n<td style=\"border: 1px solid #999; padding: 4pt 6pt;\"><a href=\"https://example.org/docs\">Docs</a></td>\n</tr>\n<tr>\n<td style=\"border: 1px solid #999; padding: 4pt 6pt;\">Café</td>\n<td style=\"border: 1px solid #999; padding: 4pt 6pt;\"><strong>100%</strong></td>\n<td style=\"border: 1px solid #999; padding: 4pt 6pt;\">Plain</td>\n</tr>\n</tbody>\n</table>\n<table style=\"border-collapse: collapse; border: 1px solid #999;\">Raw Caption<tbody><tr><th style=\"border: 1px solid #999; background-color: #eaeaea; padding: 4pt 6pt; text-align: left;\">H1</th><th style=\"border: 1px solid #999; background-color: #eaeaea; padding: 4pt 6pt; text-align: left;\">H2</th></tr><tr><td style=\"border: 1px solid #999; padding: 4pt 6pt;\">A<br>B</td><td style=\"border: 1px solid #999; padding: 4pt 6pt;\"><a>Bad</a> <a href=\"https://example.org/ok\">OK</a></td></tr></tbody></table>",
   "tables-gfm-and-html|default|discord|metrics": {
-    "outputLength": 167,
+    "outputLength": 169,
     "sourceCodeUnits": 313,
     "unit": "code-points"
   },
-  "tables-gfm-and-html|default|discord|text/plain": "```\nName | Value | Link\n---- | ----- | -------------------------------\nA|B  | x < y | Docs (https://example.org/docs)\nCafé | 100%  | Plain\n```Raw CaptionH1H2\nA\nBBad OK",
+  "tables-gfm-and-html|default|discord|text/plain": "```\nName | Value | Link\n---- | ----- | -------------------------------\nA|B  | x < y | Docs (https://example.org/docs)\nCafé | 100%  | Plain\n```\n\nRaw CaptionH1H2\nA\nBBad OK",
+  "tables-gfm-and-html|default|reddit|metrics": {
+    "outputLength": 246,
+    "sourceCodeUnits": 313,
+    "unit": "code-points"
+  },
+  "tables-gfm-and-html|default|reddit|text/plain": "| Name | Value    | Link                             |\n| ---- | -------- | -------------------------------- |\n| A\\|B | `x < y`  | [Docs](https://example.org/docs) |\n| Café | **100%** | Plain                            |\n\nRaw CaptionH1H2\nA\nBBad OK",
   "tables-gfm-and-html|default|slack-paste|text/html": "<pre><code>Name | Value | Link\n---- | ----- | -------------------------------\nA|B  | x &#x3C; y | Docs (https://example.org/docs)\nCafé | 100%  | Plain</code></pre>\n<pre><code>Raw Caption\nH1  | H2\n--- | -------------------------------\nA B | Bad OK (https://example.org/ok)</code></pre>",
   "tables-gfm-and-html|default|teams|text/html": "<table style=\"border-collapse: collapse;\">\n<thead>\n<tr>\n<th style=\"border: 1px solid #999; padding: 4px 8px; text-align: left;\">Name</th>\n<th style=\"border: 1px solid #999; padding: 4px 8px; text-align: left;\">Value</th>\n<th style=\"border: 1px solid #999; padding: 4px 8px; text-align: left;\">Link</th>\n</tr>\n</thead>\n<tbody>\n<tr>\n<td style=\"border: 1px solid #999; padding: 4px 8px;\">A|B</td>\n<td style=\"border: 1px solid #999; padding: 4px 8px;\"><code style=\"font-family: monospace; background-color: #f4f4f4;\">x &#x3C; y</code></td>\n<td style=\"border: 1px solid #999; padding: 4px 8px;\"><a href=\"https://example.org/docs\">Docs</a></td>\n</tr>\n<tr>\n<td style=\"border: 1px solid #999; padding: 4px 8px;\">Café</td>\n<td style=\"border: 1px solid #999; padding: 4px 8px;\"><strong>100%</strong></td>\n<td style=\"border: 1px solid #999; padding: 4px 8px;\">Plain</td>\n</tr>\n</tbody>\n</table>\n<table style=\"border-collapse: collapse;\">Raw Caption<tbody><tr><th style=\"border: 1px solid #999; padding: 4px 8px; text-align: left;\">H1</th><th style=\"border: 1px solid #999; padding: 4px 8px; text-align: left;\">H2</th></tr><tr><td style=\"border: 1px solid #999; padding: 4px 8px;\">A<br>B</td><td style=\"border: 1px solid #999; padding: 4px 8px;\"><a>Bad</a> <a href=\"https://example.org/ok\">OK</a></td></tr></tbody></table>",
   "tables-gfm-and-html|default|whatsapp|metrics": {
@@ -574,11 +586,17 @@
   "tables-gfm-and-html|default|whatsapp|text/plain": "```Name | Value | Link\n---- | ----- | -------------------------------\nA|B  | x < y | Docs (https://example.org/docs)\nCafé | 100%  | Plain```\n\nRaw CaptionH1H2\nA\nBBad OK",
   "tables-gfm-and-html|default|word|text/html": "<table style=\"border-collapse: collapse; border: 1px solid #999;\">\n<thead>\n<tr>\n<th style=\"border: 1px solid #999; background-color: #eaeaea; padding: 4pt 6pt; text-align: left;\">Name</th>\n<th style=\"border: 1px solid #999; background-color: #eaeaea; padding: 4pt 6pt; text-align: left;\">Value</th>\n<th style=\"border: 1px solid #999; background-color: #eaeaea; padding: 4pt 6pt; text-align: left;\">Link</th>\n</tr>\n</thead>\n<tbody>\n<tr>\n<td style=\"border: 1px solid #999; padding: 4pt 6pt;\">A|B</td>\n<td style=\"border: 1px solid #999; padding: 4pt 6pt;\"><code style=\"font-family: Consolas, monospace; background-color: #f4f4f4;\">x &#x3C; y</code></td>\n<td style=\"border: 1px solid #999; padding: 4pt 6pt;\"><a href=\"https://example.org/docs\">Docs</a></td>\n</tr>\n<tr>\n<td style=\"border: 1px solid #999; padding: 4pt 6pt;\">Café</td>\n<td style=\"border: 1px solid #999; padding: 4pt 6pt;\"><strong>100%</strong></td>\n<td style=\"border: 1px solid #999; padding: 4pt 6pt;\">Plain</td>\n</tr>\n</tbody>\n</table>\n<table style=\"border-collapse: collapse; border: 1px solid #999;\">Raw Caption<tbody><tr><th style=\"border: 1px solid #999; background-color: #eaeaea; padding: 4pt 6pt; text-align: left;\">H1</th><th style=\"border: 1px solid #999; background-color: #eaeaea; padding: 4pt 6pt; text-align: left;\">H2</th></tr><tr><td style=\"border: 1px solid #999; padding: 4pt 6pt;\">A<br>B</td><td style=\"border: 1px solid #999; padding: 4pt 6pt;\"><a>Bad</a> <a href=\"https://example.org/ok\">OK</a></td></tr></tbody></table>",
   "tables-gfm-and-html|source-url-and-unicode|discord|metrics": {
-    "outputLength": 167,
+    "outputLength": 169,
     "sourceCodeUnits": 313,
     "unit": "code-points"
   },
-  "tables-gfm-and-html|source-url-and-unicode|discord|text/plain": "```\nName | Value | Link\n---- | ----- | -------------------------------\nA|B  | x < y | Docs (https://example.org/docs)\nCafé | 100%  | Plain\n```Raw CaptionH1H2\nA\nBBad OK",
+  "tables-gfm-and-html|source-url-and-unicode|discord|text/plain": "```\nName | Value | Link\n---- | ----- | -------------------------------\nA|B  | x < y | Docs (https://example.org/docs)\nCafé | 100%  | Plain\n```\n\nRaw CaptionH1H2\nA\nBBad OK",
+  "tables-gfm-and-html|source-url-and-unicode|reddit|metrics": {
+    "outputLength": 246,
+    "sourceCodeUnits": 313,
+    "unit": "code-points"
+  },
+  "tables-gfm-and-html|source-url-and-unicode|reddit|text/plain": "| Name | Value    | Link                             |\n| ---- | -------- | -------------------------------- |\n| A\\|B | `x < y`  | [Docs](https://example.org/docs) |\n| Café | **100%** | Plain                            |\n\nRaw CaptionH1H2\nA\nBBad OK",
   "tables-gfm-and-html|source-url-and-unicode|slack-paste|text/html": "<pre><code>Name | Value | Link\n---- | ----- | -------------------------------\nA|B  | x &#x3C; y | Docs (https://example.org/docs)\nCafé | 100%  | Plain</code></pre>\n<pre><code>Raw Caption\nH1  | H2\n--- | -------------------------------\nA B | Bad OK (https://example.org/ok)</code></pre>",
   "tables-gfm-and-html|source-url-and-unicode|teams|text/html": "<table style=\"border-collapse: collapse;\">\n<thead>\n<tr>\n<th style=\"border: 1px solid #999; padding: 4px 8px; text-align: left;\">Name</th>\n<th style=\"border: 1px solid #999; padding: 4px 8px; text-align: left;\">Value</th>\n<th style=\"border: 1px solid #999; padding: 4px 8px; text-align: left;\">Link</th>\n</tr>\n</thead>\n<tbody>\n<tr>\n<td style=\"border: 1px solid #999; padding: 4px 8px;\">A|B</td>\n<td style=\"border: 1px solid #999; padding: 4px 8px;\"><code style=\"font-family: monospace; background-color: #f4f4f4;\">x &#x3C; y</code></td>\n<td style=\"border: 1px solid #999; padding: 4px 8px;\"><a href=\"https://example.org/docs\">Docs</a></td>\n</tr>\n<tr>\n<td style=\"border: 1px solid #999; padding: 4px 8px;\">Café</td>\n<td style=\"border: 1px solid #999; padding: 4px 8px;\"><strong>100%</strong></td>\n<td style=\"border: 1px solid #999; padding: 4px 8px;\">Plain</td>\n</tr>\n</tbody>\n</table>\n<table style=\"border-collapse: collapse;\">Raw Caption<tbody><tr><th style=\"border: 1px solid #999; padding: 4px 8px; text-align: left;\">H1</th><th style=\"border: 1px solid #999; padding: 4px 8px; text-align: left;\">H2</th></tr><tr><td style=\"border: 1px solid #999; padding: 4px 8px;\">A<br>B</td><td style=\"border: 1px solid #999; padding: 4px 8px;\"><a>Bad</a> <a href=\"https://example.org/ok\">OK</a></td></tr></tbody></table>",
   "tables-gfm-and-html|source-url-and-unicode|whatsapp|metrics": {
@@ -589,11 +607,17 @@
   "tables-gfm-and-html|source-url-and-unicode|whatsapp|text/plain": "```Name | Value | Link\n---- | ----- | -------------------------------\nA|B  | x < y | Docs (https://example.org/docs)\nCafé | 100%  | Plain```\n\nRaw CaptionH1H2\nA\nBBad OK",
   "tables-gfm-and-html|source-url-and-unicode|word|text/html": "<table style=\"border-collapse: collapse; border: 1px solid #999;\">\n<thead>\n<tr>\n<th style=\"border: 1px solid #999; background-color: #eaeaea; padding: 4pt 6pt; text-align: left;\">Name</th>\n<th style=\"border: 1px solid #999; background-color: #eaeaea; padding: 4pt 6pt; text-align: left;\">Value</th>\n<th style=\"border: 1px solid #999; background-color: #eaeaea; padding: 4pt 6pt; text-align: left;\">Link</th>\n</tr>\n</thead>\n<tbody>\n<tr>\n<td style=\"border: 1px solid #999; padding: 4pt 6pt;\">A|B</td>\n<td style=\"border: 1px solid #999; padding: 4pt 6pt;\"><code style=\"font-family: Consolas, monospace; background-color: #f4f4f4;\">x &#x3C; y</code></td>\n<td style=\"border: 1px solid #999; padding: 4pt 6pt;\"><a href=\"https://example.org/docs\">Docs</a></td>\n</tr>\n<tr>\n<td style=\"border: 1px solid #999; padding: 4pt 6pt;\">Café</td>\n<td style=\"border: 1px solid #999; padding: 4pt 6pt;\"><strong>100%</strong></td>\n<td style=\"border: 1px solid #999; padding: 4pt 6pt;\">Plain</td>\n</tr>\n</tbody>\n</table>\n<table style=\"border-collapse: collapse; border: 1px solid #999;\">Raw Caption<tbody><tr><th style=\"border: 1px solid #999; background-color: #eaeaea; padding: 4pt 6pt; text-align: left;\">H1</th><th style=\"border: 1px solid #999; background-color: #eaeaea; padding: 4pt 6pt; text-align: left;\">H2</th></tr><tr><td style=\"border: 1px solid #999; padding: 4pt 6pt;\">A<br>B</td><td style=\"border: 1px solid #999; padding: 4pt 6pt;\"><a>Bad</a> <a href=\"https://example.org/ok\">OK</a></td></tr></tbody></table>",
   "tables-gfm-and-html|with-source-url|discord|metrics": {
-    "outputLength": 167,
+    "outputLength": 169,
     "sourceCodeUnits": 313,
     "unit": "code-points"
   },
-  "tables-gfm-and-html|with-source-url|discord|text/plain": "```\nName | Value | Link\n---- | ----- | -------------------------------\nA|B  | x < y | Docs (https://example.org/docs)\nCafé | 100%  | Plain\n```Raw CaptionH1H2\nA\nBBad OK",
+  "tables-gfm-and-html|with-source-url|discord|text/plain": "```\nName | Value | Link\n---- | ----- | -------------------------------\nA|B  | x < y | Docs (https://example.org/docs)\nCafé | 100%  | Plain\n```\n\nRaw CaptionH1H2\nA\nBBad OK",
+  "tables-gfm-and-html|with-source-url|reddit|metrics": {
+    "outputLength": 246,
+    "sourceCodeUnits": 313,
+    "unit": "code-points"
+  },
+  "tables-gfm-and-html|with-source-url|reddit|text/plain": "| Name | Value    | Link                             |\n| ---- | -------- | -------------------------------- |\n| A\\|B | `x < y`  | [Docs](https://example.org/docs) |\n| Café | **100%** | Plain                            |\n\nRaw CaptionH1H2\nA\nBBad OK",
   "tables-gfm-and-html|with-source-url|slack-paste|text/html": "<pre><code>Name | Value | Link\n---- | ----- | -------------------------------\nA|B  | x &#x3C; y | Docs (https://example.org/docs)\nCafé | 100%  | Plain</code></pre>\n<pre><code>Raw Caption\nH1  | H2\n--- | -------------------------------\nA B | Bad OK (https://example.org/ok)</code></pre>",
   "tables-gfm-and-html|with-source-url|teams|text/html": "<table style=\"border-collapse: collapse;\">\n<thead>\n<tr>\n<th style=\"border: 1px solid #999; padding: 4px 8px; text-align: left;\">Name</th>\n<th style=\"border: 1px solid #999; padding: 4px 8px; text-align: left;\">Value</th>\n<th style=\"border: 1px solid #999; padding: 4px 8px; text-align: left;\">Link</th>\n</tr>\n</thead>\n<tbody>\n<tr>\n<td style=\"border: 1px solid #999; padding: 4px 8px;\">A|B</td>\n<td style=\"border: 1px solid #999; padding: 4px 8px;\"><code style=\"font-family: monospace; background-color: #f4f4f4;\">x &#x3C; y</code></td>\n<td style=\"border: 1px solid #999; padding: 4px 8px;\"><a href=\"https://example.org/docs\">Docs</a></td>\n</tr>\n<tr>\n<td style=\"border: 1px solid #999; padding: 4px 8px;\">Café</td>\n<td style=\"border: 1px solid #999; padding: 4px 8px;\"><strong>100%</strong></td>\n<td style=\"border: 1px solid #999; padding: 4px 8px;\">Plain</td>\n</tr>\n</tbody>\n</table>\n<table style=\"border-collapse: collapse;\">Raw Caption<tbody><tr><th style=\"border: 1px solid #999; padding: 4px 8px; text-align: left;\">H1</th><th style=\"border: 1px solid #999; padding: 4px 8px; text-align: left;\">H2</th></tr><tr><td style=\"border: 1px solid #999; padding: 4px 8px;\">A<br>B</td><td style=\"border: 1px solid #999; padding: 4px 8px;\"><a>Bad</a> <a href=\"https://example.org/ok\">OK</a></td></tr></tbody></table>",
   "tables-gfm-and-html|with-source-url|whatsapp|metrics": {

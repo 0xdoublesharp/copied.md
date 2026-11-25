@@ -44,14 +44,14 @@ pub(crate) fn check(markdown: &str) -> Option<Limit> {
 /// paragraph by counting delimiter characters that can still open emphasis.
 pub(crate) fn estimated_depth(markdown: &str) -> usize {
     let mut max = 0;
-    let mut open_delimiters = 0usize;
+    let mut open = [0usize; 3];
     for line in markdown.split('\n') {
         if line.trim().is_empty() {
-            open_delimiters = 0;
+            open = [0; 3];
             continue;
         }
         let (block, rest) = block_prefix(line);
-        open_delimiters = inline_open(rest, open_delimiters, &mut max, block);
+        inline_open(rest, &mut open, &mut max, block);
         max = max.max(block);
     }
     max
@@ -106,15 +106,22 @@ fn block_prefix(line: &str) -> (usize, &str) {
     (4 + quotes + 2 * markers + nested_by_indent, &line[index..])
 }
 
-fn inline_open(text: &str, mut open: usize, max: &mut usize, block: usize) -> usize {
+/// Counts delimiter characters that may still be open, per delimiter kind. A
+/// run only cancels openers of its own character, and only when it can close.
+fn inline_open(text: &str, open: &mut [usize; 3], max: &mut usize, block: usize) {
     let chars: Vec<char> = text.chars().collect();
     let mut index = 0;
     while index < chars.len() {
         let ch = chars[index];
-        if !matches!(ch, '*' | '_' | '~') {
-            index += 1;
-            continue;
-        }
+        let kind = match ch {
+            '*' => 0,
+            '_' => 1,
+            '~' => 2,
+            _ => {
+                index += 1;
+                continue;
+            }
+        };
         let start = index;
         while index < chars.len() && chars[index] == ch {
             index += 1;
@@ -129,14 +136,14 @@ fn inline_open(text: &str, mut open: usize, max: &mut usize, block: usize) -> us
         if ch == '_' && intraword {
             continue;
         }
-        if right && open > 0 {
-            open = open.saturating_sub(run);
+        let closes = right && (!left || open[kind] > 0);
+        if closes {
+            open[kind] = open[kind].saturating_sub(run);
         } else if left {
-            open += run;
+            open[kind] += run;
         }
-        *max = (*max).max(block + open);
+        *max = (*max).max(block + open.iter().sum::<usize>());
     }
-    open
 }
 
 #[cfg(test)]

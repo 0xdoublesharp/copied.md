@@ -105,3 +105,19 @@ it from the item text.
 targets = ["slack-paste", "teams", "word"]
 fields = ["text/html"]
 cases = ["lists-and-tasks"]
+
+[[divergence]]
+id = "markdown-html-block-separation"
+title = "Raw HTML blocks stay separate blocks in Discord and Reddit Markdown"
+rationale = """
+The oracle replaced every raw HTML block with a bare text node. Because the
+root then contained phrasing content, mdast-util-to-markdown joined all
+top-level blocks flush, producing text such as `after.Block` and leaving a
+table's code fence followed directly by text, so Discord never closed the code
+block. HTML blocks now become their own paragraphs (trailing whitespace
+trimmed, empty ones dropped), so blocks keep their blank-line separation and a
+native spoiler can never end up inside an unclosed code block.
+"""
+targets = ["discord", "reddit"]
+fields = ["text/plain", "metrics"]
+cases = ["signal-spoilers-valid", "tables-gfm-and-html"]

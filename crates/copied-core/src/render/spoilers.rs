@@ -27,9 +27,12 @@ pub(crate) const OPEN_SPOILER: char = '\u{FDD0}';
 pub(crate) const OPEN_SPAN: char = '\u{FDD1}';
 /// Sentinel for a closing span.
 pub(crate) const CLOSE_SPAN: char = '\u{FDD2}';
+/// Sentinel for a spoiler that must be omitted wherever it lands (Discord table
+/// code blocks, where a native marker would show literally).
+pub(crate) const OPEN_OMITTED: char = '\u{FDD3}';
 
 fn is_sentinel(ch: char) -> bool {
-    matches!(ch, OPEN_SPOILER | OPEN_SPAN | CLOSE_SPAN)
+    matches!(ch, OPEN_SPOILER | OPEN_SPAN | CLOSE_SPAN | OPEN_OMITTED)
 }
 
 /// Replaces sentinel characters in source text with U+FFFD.
@@ -258,19 +261,6 @@ pub(crate) struct Resolved {
     pub omitted: usize,
 }
 
-fn inside_code_fence(before: &str) -> bool {
-    let mut open = false;
-    for line in before.split('\n') {
-        let trimmed = line.trim_start_matches([
-            '>', ' ', '-', '*', '+', '.', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9',
-        ]);
-        if trimmed.starts_with("```") || trimmed.starts_with("~~~") {
-            open = !open;
-        }
-    }
-    open
-}
-
 /// HTML tags in `content`: (unmatched closes, unmatched opens).
 fn html_balance(content: &str) -> (Vec<String>, Vec<String>) {
     let mut opens: Vec<String> = Vec::new();
@@ -405,9 +395,11 @@ fn placeholder(surface: Surface, content: &str) -> String {
     }
 }
 
-fn native(surface: Surface, before: &str, content: &str) -> Option<String> {
+fn native(surface: Surface, content: &str) -> Option<String> {
     // Backslash escapes may not stop a destination's closing marker; ignore them.
     let unescaped = content.replace('\\', "");
+    // A marker pair must not interleave with emphasis delimiters.
+    let balanced = || markdown_balance(content).is_empty();
     match surface {
         Surface::TelegramHtml => {
             let (closes, opens) = html_balance(content);
@@ -423,19 +415,21 @@ fn native(surface: Surface, before: &str, content: &str) -> Option<String> {
             && !content.ends_with('|')
             && !content.contains("\n\n")
             && !content.contains("```")
-            && !inside_code_fence(before))
+            && balanced())
         .then(|| format!("||{content}||")),
         Surface::Reddit => {
             let unescaped_pipe = content
                 .char_indices()
                 .any(|(i, c)| c == '|' && !content[..i].ends_with('\\'));
             (!content.is_empty()
+                && !content.starts_with(char::is_whitespace)
+                && !content.ends_with(char::is_whitespace)
                 && !unescaped.starts_with('<')
                 && !content.contains('\n')
                 && !unescaped.contains("!<")
                 && !unescaped.contains(">!")
                 && !unescaped_pipe
-                && !inside_code_fence(before))
+                && balanced())
             .then(|| format!(">!{content}!<"))
         }
         Surface::Plain | Surface::Rtf => None,
@@ -450,12 +444,14 @@ pub(crate) fn resolve(rendered: &str, surface: Surface, allow_native: bool) -> R
     let mut out = String::with_capacity(rendered.len());
     let mut resolved = Resolved::default();
     let mut depth = 0usize;
+    let mut forced = false;
     let mut content = String::new();
     for ch in rendered.chars() {
         if depth == 0 {
             match ch {
-                OPEN_SPOILER => {
+                OPEN_SPOILER | OPEN_OMITTED => {
                     depth = 1;
+                    forced = ch == OPEN_OMITTED;
                     content.clear();
                 }
                 OPEN_SPAN | CLOSE_SPAN => {}
@@ -464,13 +460,13 @@ pub(crate) fn resolve(rendered: &str, surface: Surface, allow_native: bool) -> R
             continue;
         }
         match ch {
-            OPEN_SPOILER | OPEN_SPAN => depth += 1,
+            OPEN_SPOILER | OPEN_SPAN | OPEN_OMITTED => depth += 1,
             CLOSE_SPAN => {
                 depth -= 1;
                 if depth == 0 {
                     resolved.regions += 1;
-                    let replacement = allow_native
-                        .then(|| native(surface, &out, &content))
+                    let replacement = (allow_native && !forced)
+                        .then(|| native(surface, &content))
                         .flatten();
                     if let Some(native) = replacement {
                         out.push_str(&native);
@@ -568,6 +564,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::too_many_lines)]
     fn resolves_native_and_placeholder_regions() {
         let stream = format!(
             "a {OPEN_SPOILER}x{OPEN_SPAN}y{CLOSE_SPAN}{CLOSE_SPAN} b {OPEN_SPAN}c{CLOSE_SPAN}"
@@ -605,11 +602,23 @@ mod tests {
             (resolved.text.as_str(), resolved.omitted),
             ("a [spoiler omitted]", 1)
         );
-        let fenced = format!("```\n{OPEN_SPOILER}x{CLOSE_SPAN}\n```");
+        let fenced = format!("```\n{OPEN_OMITTED}x{OPEN_SPAN}y{CLOSE_SPAN}{CLOSE_SPAN}\n```");
         assert_eq!(
             resolve(&fenced, Surface::Discord, true).text,
             "```\n[spoiler omitted]\n```"
         );
+        let crossing = format!("**a {OPEN_SPOILER}Zq** c{CLOSE_SPAN}");
+        assert_eq!(resolve(&crossing, Surface::Discord, true).omitted, 1);
+        assert_eq!(
+            resolve(
+                &format!("{OPEN_SPOILER} x{CLOSE_SPAN}"),
+                Surface::Reddit,
+                true
+            )
+            .omitted,
+            1
+        );
+        assert_eq!(neutralize("\u{FDD3}"), "\u{FFFD}");
         assert_eq!(
             resolve(
                 &format!("{OPEN_SPOILER}a||b{CLOSE_SPAN}"),

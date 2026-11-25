@@ -151,16 +151,14 @@ pub(crate) fn walk<'a>(nodes: &'a [Node], visit: &mut dyn FnMut(&'a Node)) {
     }
 }
 
-/// Maximum depth of a node list (iterative, so it is safe on any tree).
-pub(crate) fn depth(nodes: &[Node]) -> usize {
+/// Maximum depth of a `markdown-rs` tree, measured iteratively before conversion.
+pub(crate) fn mdast_depth(node: &mdast::Node) -> usize {
     let mut max = 0;
-    let mut stack: Vec<(&[Node], usize)> = vec![(nodes, 1)];
-    while let Some((list, level)) = stack.pop() {
-        for node in list {
-            max = max.max(level);
-            if let Some(children) = node.children() {
-                stack.push((children, level + 1));
-            }
+    let mut stack = vec![(node, 1)];
+    while let Some((node, level)) = stack.pop() {
+        max = max.max(level);
+        if let Some(children) = node.children() {
+            stack.extend(children.iter().map(|child| (child, level + 1)));
         }
     }
     max
@@ -308,10 +306,8 @@ mod tests {
         assert_eq!(convert(&yaml), None);
         assert_eq!(root_children(&yaml), Vec::new());
         assert_eq!(
-            depth(&[Node::Paragraph(vec![Node::Emphasis(vec![Node::Text(
-                "x".into()
-            )])])]),
-            3
+            mdast_depth(&markdown::to_mdast("*a*", &markdown::ParseOptions::gfm()).unwrap()),
+            4
         );
     }
 }

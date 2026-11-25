@@ -725,3 +725,77 @@ fn json_contract_round_trips() {
     assert_eq!(back, result);
     assert_eq!(resolve_target("slack"), Some(CopyTarget::SlackPaste));
 }
+
+// ---------------------------------------------------------------------------
+// Spoiler regressions found in review.
+
+#[test]
+fn spoilers_crossing_collapsed_emphasis_fail_closed() {
+    for markdown in [
+        "# **a <span data-spoiler=\"true\">Zq** c</span>",
+        "**x __a <span data-spoiler=\"true\">Zq__ c</span>**",
+        "*x _a <span data-spoiler=\"true\">Zq_ c</span>*",
+        "~~x ~a <span data-spoiler=\"true\">Zq~ c</span>~~",
+    ] {
+        for target in [
+            CopyTarget::Discord,
+            CopyTarget::Reddit,
+            CopyTarget::Telegram,
+        ] {
+            let result = convert(markdown, target);
+            let r = &result.representations;
+            for value in [Some(&r.plain), r.html.as_ref(), r.rtf.as_ref()]
+                .into_iter()
+                .flatten()
+            {
+                assert!(!value.contains("Zq"), "{target} leaked {markdown}: {value}");
+            }
+            assert!(
+                codes(&result)
+                    .contains(&(DiagnosticCode::SpoilerOmitted, DiagnosticSeverity::Warning)),
+                "{target}"
+            );
+        }
+    }
+}
+
+#[test]
+fn discord_table_spoilers_stay_omitted_after_tricky_fences() {
+    for prefix in ["```\n~~~\n```", "````\n```\n````", "~~~\n```\n~~~"] {
+        let markdown = format!(
+            "{prefix}\n\n| a | <span data-spoiler=\"true\">Zq</span> |\n|---|---|\n| c | d |"
+        );
+        let text = plain(&markdown, CopyTarget::Discord);
+        assert!(!text.contains("Zq"), "{text}");
+        assert!(text.contains("[spoiler omitted]"), "{text}");
+        let reddit = plain(&markdown, CopyTarget::Reddit);
+        assert!(reddit.contains(">!Zq!<"), "{reddit}");
+    }
+}
+
+#[test]
+fn reddit_spoilers_need_tight_content() {
+    assert_eq!(
+        plain("<span data-spoiler=\"true\"> x</span>", CopyTarget::Reddit),
+        "[spoiler omitted]"
+    );
+    assert_eq!(
+        plain("<span data-spoiler=\"true\">x </span>y", CopyTarget::Reddit),
+        "[spoiler omitted]y"
+    );
+}
+
+#[test]
+fn crossing_delimiter_runs_cannot_bypass_the_depth_limit() {
+    for k in [3_000, 20_000] {
+        let source = format!("{}{}", " _a b*".repeat(k), " c_".repeat(k));
+        let result = convert(&source, CopyTarget::RichText);
+        assert!(
+            result
+                .diagnostics
+                .iter()
+                .any(|d| d.code == DiagnosticCode::InputLimitExceeded),
+            "k={k}"
+        );
+    }
+}
