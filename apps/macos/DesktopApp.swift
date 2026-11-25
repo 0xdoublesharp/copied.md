@@ -54,7 +54,7 @@ struct WelcomeView: View {
     let setShortcut: () -> Void
 
     var explanation: String {
-        shortcut.map { "Copy Markdown in any app, then press \($0) to choose a format." }
+        shortcut.map { "Copy Markdown in any app, then press \($0) to convert it." }
             ?? shortcutFailure
             ?? "Use the menu bar to convert Markdown from your clipboard."
     }
@@ -73,19 +73,34 @@ struct WelcomeView: View {
     }
 }
 
+enum ShortcutCopyMode: Int, CaseIterable {
+    case copyAndPick = 0
+    case picker = 1
+    case copyOnly = 2
+
+    var title: String {
+        switch self {
+        case .copyAndPick: "Copy Last Used and Show Picker"
+        case .picker: "Show Picker First"
+        case .copyOnly: "Copy Last Used Only"
+        }
+    }
+}
+
 @MainActor
 final class DesktopApp: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private let runtime: any MarkdownRuntime
     private let defaults: UserDefaults
     private let clipboardDefaults: UserDefaults
     private let clipboard: () -> any ClipboardBoard
-    private let chooseFormat: @MainActor ([Target]) throws -> Choice
+    private let chooseFormat: @MainActor ([Target], CopiedFormat?) throws -> Choice
     private let runAlert: @MainActor (NSAlert) -> NSApplication.ModalResponse
     private let makeHotKey: @MainActor () throws -> GlobalHotKey
     private let defaultShortcut: () -> Shortcut
     private let loginItems: LoginItems
     private let shortcutKey = "keyboardShortcut"
     private let disabledKey = "keyboardShortcutDisabled"
+    private let shortcutModeKey = "keyboardShortcutCopyMode"
     private let firstLaunchKey = "hasLaunchedDesktopApp"
     let menu = NSMenu()
     let welcome = NSPopover()
@@ -102,7 +117,7 @@ final class DesktopApp: NSObject, NSApplicationDelegate, NSMenuDelegate {
         defaults: UserDefaults = .standard,
         clipboardDefaults: UserDefaults = preferences,
         clipboard: @escaping () -> any ClipboardBoard = generalClipboard,
-        chooseFormat: (@MainActor ([Target]) throws -> Choice)? = nil,
+        chooseFormat: (@MainActor ([Target], CopiedFormat?) throws -> Choice)? = nil,
         runAlert: @escaping @MainActor (NSAlert) -> NSApplication.ModalResponse = runDesktopAlert,
         makeHotKey: @escaping @MainActor () throws -> GlobalHotKey = { try GlobalHotKey() },
         defaultShortcut: @escaping () -> Shortcut = { Shortcut.defaultShortcut() },
@@ -112,7 +127,7 @@ final class DesktopApp: NSObject, NSApplicationDelegate, NSMenuDelegate {
         self.defaults = defaults
         self.clipboardDefaults = clipboardDefaults
         self.clipboard = clipboard
-        self.chooseFormat = chooseFormat ?? { try choose($0, rememberingIn: clipboardDefaults) }
+        self.chooseFormat = chooseFormat ?? { try choose($0, rememberingIn: clipboardDefaults, copied: $1) }
         self.runAlert = runAlert
         self.makeHotKey = makeHotKey
         self.defaultShortcut = defaultShortcut
@@ -123,6 +138,10 @@ final class DesktopApp: NSObject, NSApplicationDelegate, NSMenuDelegate {
         if let data = defaults.data(forKey: shortcutKey),
            let saved = try? JSONDecoder().decode(Shortcut.self, from: data) { return saved }
         return defaultShortcut()
+    }
+
+    private var shortcutMode: ShortcutCopyMode {
+        ShortcutCopyMode(rawValue: defaults.integer(forKey: shortcutModeKey)) ?? .copyAndPick
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -170,7 +189,7 @@ final class DesktopApp: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private func refreshMenu() {
         menu.removeAllItems()
         let copy = item("Copy Markdown As…", #selector(copyFromClipboard))
-        if let shortcut = hotKey?.current { copy.title += "   " + shortcut.label }
+        if shortcutMode == .picker, let shortcut = hotKey?.current { copy.title += "   " + shortcut.label }
         menu.addItem(copy)
         if let shortcutFailure { menu.addItem(item(shortcutFailure, nil)) }
 
@@ -179,6 +198,16 @@ final class DesktopApp: NSObject, NSApplicationDelegate, NSMenuDelegate {
         enabled.state = hotKey?.current == nil ? .off : .on
         menu.addItem(enabled)
         menu.addItem(item("Change Keyboard Shortcut…", #selector(recordShortcut)))
+        let behavior = item("Shortcut Behavior", nil)
+        let modes = NSMenu()
+        for mode in ShortcutCopyMode.allCases {
+            let action = item(mode.title, #selector(setShortcutMode(_:)))
+            action.tag = mode.rawValue
+            action.state = mode == shortcutMode ? .on : .off
+            modes.addItem(action)
+        }
+        behavior.submenu = modes
+        menu.addItem(behavior)
         if !preferredShortcut.matches(defaultShortcut()) {
             menu.addItem(item("Reset to Default Shortcut", #selector(resetShortcut)))
         }
@@ -220,7 +249,7 @@ final class DesktopApp: NSObject, NSApplicationDelegate, NSMenuDelegate {
     @objc private func copyFromClipboard() { startCopy() }
 
     @discardableResult
-    func startCopy() -> Task<Void, Never>? {
+    func startCopy(mode: ShortcutCopyMode = .picker) -> Task<Void, Never>? {
         guard !busy else { return nil }
         busy = true
         let previousApp = NSWorkspace.shared.frontmostApplication
@@ -249,30 +278,48 @@ final class DesktopApp: NSObject, NSApplicationDelegate, NSMenuDelegate {
                     targets = try await Task.detached(priority: .userInitiated) { try runtime.targets() }.value
                     catalog = targets
                 }
-                let selected = try pick(targets)
-                guard let target = selected.target else { return }
-                let result = try await Task.detached(priority: .userInitiated) {
-                    try runtime.convert(initial.text, to: target)
-                }.value
-                _ = try write(
-                    WriteRequest(representations: result.representations, expectedChangeCount: initial.changeCount, target: target),
-                    to: clipboard(),
-                    rememberingIn: clipboardDefaults
-                )
-                markCopied()
-                if let warning = result.diagnostics.first(where: { $0.severity == "warning" }) {
-                    present("Copied with a warning", detail: warning.message)
+                var expectedChangeCount = initial.changeCount
+                var copied: CopiedFormat?
+                if mode != .picker, let target = preferredFormat(from: targets, rememberingIn: clipboardDefaults) {
+                    let result = try await convertAndCopy(initial.text, to: target.id, expecting: expectedChangeCount)
+                    expectedChangeCount = result.changeCount
+                    copied = CopiedFormat(target: target, warning: result.warning)
+                    if mode == .copyOnly {
+                        presentCopyWarning(result.warning)
+                        return
+                    }
                 }
+                let selected = try pick(targets, copied: copied)
+                guard let target = selected.target, target != copied?.target.id else { return }
+                let result = try await convertAndCopy(initial.text, to: target, expecting: expectedChangeCount)
+                presentCopyWarning(result.warning)
             } catch {
                 present(error.localizedDescription)
             }
         }
     }
 
-    private func pick(_ targets: [Target]) throws -> Choice {
+    private func convertAndCopy(_ markdown: String, to target: String, expecting changeCount: Int) async throws
+        -> (changeCount: Int, warning: String?) {
+        let result = try await Task.detached(priority: .userInitiated) { [runtime] in
+            try runtime.convert(markdown, to: target)
+        }.value
+        let written = try write(
+            WriteRequest(representations: result.representations, expectedChangeCount: changeCount, target: target),
+            to: clipboard(), rememberingIn: clipboardDefaults
+        )
+        markCopied()
+        return (written.changeCount, result.diagnostics.first { $0.severity == "warning" }?.message)
+    }
+
+    private func presentCopyWarning(_ warning: String?) {
+        if let warning { present("Copied with a warning", detail: warning) }
+    }
+
+    private func pick(_ targets: [Target], copied: CopiedFormat?) throws -> Choice {
         choosing = true
         defer { choosing = false }
-        return try chooseFormat(targets)
+        return try chooseFormat(targets, copied)
     }
 
     private func markCopied() {
@@ -285,24 +332,22 @@ final class DesktopApp: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     private func restore(_ app: NSRunningApplication?) {
-        Self.restoreFocus(to: app, frontmost: NSWorkspace.shared.frontmostApplication?.processIdentifier)
+        Self.applicationToRestore(app, frontmost: NSWorkspace.shared.frontmostApplication?.processIdentifier)?.activate(options: [])
     }
 
-    static func restoreFocus(to app: NSRunningApplication?, frontmost: pid_t?,
-                             using activate: @MainActor (NSRunningApplication) -> Void = reactivate) {
+    static func applicationToRestore(_ app: NSRunningApplication?, frontmost: pid_t?) -> NSRunningApplication? {
         let ownPID = ProcessInfo.processInfo.processIdentifier
-        guard let app, !app.isTerminated, app.processIdentifier != ownPID, frontmost == ownPID else { return }
-        activate(app)
-    }
-
-    static func reactivate(_ app: NSRunningApplication) {
-        app.activate(options: [])
+        guard let app, !app.isTerminated, app.processIdentifier != ownPID, frontmost == ownPID else { return nil }
+        return app
     }
 
     private func prepareHotKey() throws -> GlobalHotKey {
         if let hotKey { return hotKey }
         let hotKey = try makeHotKey()
-        hotKey.onPress = { [weak self] in self?.copyFromClipboard() }
+        hotKey.onPress = { [weak self] in
+            guard let self else { return }
+            startCopy(mode: shortcutMode)
+        }
         self.hotKey = hotKey
         return hotKey
     }
@@ -325,6 +370,11 @@ final class DesktopApp: NSObject, NSApplicationDelegate, NSMenuDelegate {
             do { try performBind(preferredShortcut, remember: false) }
             catch { present(error.localizedDescription) }
         }
+    }
+
+    @objc private func setShortcutMode(_ item: NSMenuItem) {
+        defaults.set(item.tag, forKey: shortcutModeKey)
+        refreshMenu()
     }
 
     @objc private func resetShortcut() {

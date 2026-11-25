@@ -33,6 +33,9 @@ struct WriteRequest: Decodable {
 
 struct Written: Encodable {
     let types: [String]
+    let changeCount: Int
+
+    private enum CodingKeys: String, CodingKey { case types }
 }
 
 struct Target: Decodable {
@@ -103,7 +106,7 @@ func write(
         throw Failure("macOS rejected the clipboard write.")
     }
     if let target = request.target { defaults.set(target, forKey: preferenceKey) }
-    return Written(types: types)
+    return Written(types: types, changeCount: prepared)
 }
 
 @MainActor
@@ -113,42 +116,12 @@ func runDesktopAlert(_ alert: NSAlert) -> NSApplication.ModalResponse {
 }
 
 @MainActor
-private func runPickerAlert(_ alert: NSAlert) -> NSApplication.ModalResponse {
-    let app = NSApplication.shared
-    app.setActivationPolicy(.accessory)
-    activateForAlert(app, cooperative: false)
-    return alert.runModal()
-}
-
-@MainActor
-private func activateForAlert(_ app: NSApplication, cooperative: Bool) {
+func activateForAlert(_ app: NSApplication, cooperative: Bool) {
     if cooperative, #available(macOS 14, *) {
         app.activate()
     } else {
         app.activate(ignoringOtherApps: true)
     }
-}
-
-@MainActor
-func choose(
-    _ targets: [Target], rememberingIn defaults: UserDefaults = preferences,
-    runModal: @MainActor (NSAlert) -> NSApplication.ModalResponse = runPickerAlert
-) throws -> Choice {
-    guard !targets.isEmpty else { throw Failure("There are no available formats.") }
-    let popup = NSPopUpButton(frame: NSRect(x: 0, y: 0, width: 260, height: 28))
-    popup.addItems(withTitles: targets.map(\.label))
-    if let recent = defaults.string(forKey: preferenceKey),
-       let index = targets.firstIndex(where: { $0.id == recent }) {
-        popup.selectItem(at: index)
-    }
-    let alert = NSAlert()
-    alert.messageText = "Copy Markdown As…"
-    alert.accessoryView = popup
-    alert.addButton(withTitle: "Copy")
-    alert.addButton(withTitle: "Cancel")
-    let confirmed = runModal(alert) == .alertFirstButtonReturn
-    let index = popup.indexOfSelectedItem
-    return Choice(target: confirmed && targets.indices.contains(index) ? targets[index].id : nil)
 }
 
 func selfTest() throws {

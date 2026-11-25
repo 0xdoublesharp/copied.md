@@ -56,6 +56,7 @@ for cpu in arm64 x86_64; do
   xcrun swiftc -parse-as-library -O -target "$cpu-apple-macos13.5" \
     -module-cache-path "$stage/module-cache" \
     "$source_dir/Pasteboard.swift" "$source_dir/GlobalHotKey.swift" \
+    "$source_dir/FormatPicker.swift" "$source_dir/FormatIcons.swift" \
     "$source_dir/ConverterRuntime.swift" "$source_dir/DesktopApp.swift" \
     -o "$stage/copied-md-$cpu"
 done

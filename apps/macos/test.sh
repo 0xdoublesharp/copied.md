@@ -34,6 +34,7 @@ compile() {
 
 compile -D COPIED_MD_TESTS \
   "$root_dir/Pasteboard.swift" "$root_dir/ConverterRuntime.swift" "$root_dir/GlobalHotKey.swift" \
+  "$root_dir/FormatPicker.swift" "$root_dir/FormatIcons.swift" \
   "$root_dir/DesktopApp.swift" "$root_dir/PasteboardCommand.swift" \
   "$root_dir/tests/NativeTests.swift" -o "$run_dir/native-tests"
 LLVM_PROFILE_FILE="$run_dir/native.profraw" \
@@ -46,7 +47,8 @@ fi
 LLVM_PROFILE_FILE="$run_dir/launch.profraw" \
   "$run_dir/native-tests" launch -hasLaunchedDesktopApp YES -keyboardShortcutDisabled YES
 
-compile "$root_dir/Pasteboard.swift" "$root_dir/PasteboardCommand.swift" -o "$run_dir/pasteboard-helper"
+compile "$root_dir/Pasteboard.swift" "$root_dir/FormatPicker.swift" "$root_dir/FormatIcons.swift" \
+  "$root_dir/PasteboardCommand.swift" -o "$run_dir/pasteboard-helper"
 export LLVM_PROFILE_FILE="$run_dir/helper-%p.profraw"
 helper=$run_dir/pasteboard-helper
 "$helper" self-test
@@ -78,6 +80,7 @@ ln -s "$(command -v node)" "$desktop/Contents/Helpers/node"
 cp "$COPIED_MD_CLI_OUT" "$desktop/Contents/Resources/converter.mjs"
 executable=$desktop/Contents/MacOS/copied-md
 compile "$root_dir/Pasteboard.swift" "$root_dir/GlobalHotKey.swift" \
+  "$root_dir/FormatPicker.swift" "$root_dir/FormatIcons.swift" \
   "$root_dir/ConverterRuntime.swift" "$root_dir/DesktopApp.swift" -o "$executable"
 LLVM_PROFILE_FILE="$run_dir/desktop.profraw" "$executable" --self-test
 

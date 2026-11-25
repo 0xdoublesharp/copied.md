@@ -35,6 +35,7 @@ private func pasteboardInvariants() throws {
         let captured = try snapshot(board)
         try expect(captured.text == value, "Plain text changed during an isolated pasteboard write.")
         try expect(captured.changeCount != expectCount, "A successful write must change the generation.")
+        try expect(written.changeCount == captured.changeCount, "The replacement copy would use the wrong generation.")
         if html.isEmpty {
             try expect(written.types == ["text/plain"], "An empty rich flavor must be omitted.")
             try expect(board.string(forType: .html) == nil && board.data(forType: .rtf) == nil,
@@ -243,37 +244,175 @@ private func hotKeyEvents() async throws {
 }
 
 @MainActor
-private func afterModalStarts(_ action: @escaping @MainActor () -> Void) {
-    let timer = Timer(timeInterval: 0.05, repeats: false) { _ in
+@discardableResult
+private func afterModalStarts(delay: TimeInterval = 0.05, _ action: @escaping @MainActor () -> Void) -> Timer {
+    let timer = Timer(timeInterval: delay, repeats: false) { _ in
         MainActor.assumeIsolated { action() }
     }
     RunLoop.main.add(timer, forMode: .modalPanel)
+    return timer
+}
+
+@MainActor
+private func buttons(in view: NSView) -> [NSButton] {
+    (view as? NSButton).map { [$0] } ?? view.subviews.flatMap { buttons(in: $0) }
+}
+
+@MainActor
+private func inspectPicker(
+    _ targets: [Target], defaults: UserDefaults, copied: CopiedFormat? = nil,
+    inspect: @escaping @MainActor (NSWindow, NSView) throws -> Void
+) throws -> Choice {
+    var failure: Error?
+    let timeout = afterModalStarts(delay: 2) {
+        failure = Failure("The format picker did not finish its action.")
+        NSApp.abortModal()
+    }
+    defer { timeout.invalidate() }
+    afterModalStarts {
+        do {
+            guard let window = NSApp.modalWindow, let view = window.contentView else {
+                throw Failure("The format picker did not open a modal window.")
+            }
+            try inspect(window, view)
+        } catch {
+            failure = error
+            NSApp.abortModal()
+        }
+    }
+    let result = try choose(targets, rememberingIn: defaults, copied: copied)
+    if let failure { throw failure }
+    return result
+}
+
+@MainActor
+private func press(_ characters: String, key: Int, in window: NSWindow) {
+    let event = NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: [], timestamp: 0,
+                                windowNumber: window.windowNumber, context: nil, characters: characters,
+                                charactersIgnoringModifiers: characters, isARepeat: false, keyCode: UInt16(key))!
+    if !window.performKeyEquivalent(with: event) { window.sendEvent(event) }
 }
 
 @MainActor
 private func pickerInvariants(_ defaults: UserDefaults) throws {
     let targets = [Target(id: "plain-text", label: "Plain Text"), Target(id: "telegram", label: "Telegram")]
-    defaults.set("telegram", forKey: preferenceKey)
-    let chosen = try choose(targets, rememberingIn: defaults) { alert in
-        let picker = alert.accessoryView as? NSPopUpButton
-        precondition(picker?.indexOfSelectedItem == 1)
-        return .alertFirstButtonReturn
+    defaults.set("plain-text", forKey: preferenceKey)
+    let clicked = try inspectPicker(targets, defaults: defaults) { _, content in
+        guard let card = buttons(in: content).first(where: { $0.identifier?.rawValue == "telegram" }) else {
+            throw Failure("Telegram is missing its format card.")
+        }
+        card.performClick(nil)
     }
-    try expect(chosen.target == "telegram", "Picker did not restore the most recent target.")
+    try expect(clicked.target == "telegram", "Clicking a different format card did not immediately choose it.")
+    try expect(defaults.string(forKey: preferenceKey) == "plain-text", "The picker remembered a format before a successful write.")
+
+    defaults.set("telegram", forKey: preferenceKey)
+    let chosen = try inspectPicker(targets, defaults: defaults) { window, view in
+        let cards = buttons(in: view).compactMap { $0 as? FormatCard }
+        try expect(cards.allSatisfy { view.bounds.contains($0.convert($0.bounds, to: view)) },
+                   "A picker card was outside the visible window.")
+        try expect(cards.first { $0.isAccessibilitySelected() }?.formatID == "telegram",
+                   "The last-used card was not marked selected.")
+        try expect(buttons(in: view).contains { $0.title == "Copy Telegram" }, "Copy did not name the selected target.")
+        try expect(window.defaultButtonCell?.title == "Copy Telegram", "Return did not have a default copy action.")
+        press("\r", key: kVK_Return, in: window)
+    }
+    try expect(chosen.target == "telegram", "Return did not choose the last-used target.")
+
     defaults.set("removed-target", forKey: preferenceKey)
-    let cancelled = try choose(targets, rememberingIn: defaults) { alert in
-        precondition((alert.accessoryView as? NSPopUpButton)?.indexOfSelectedItem == 0)
-        return .alertSecondButtonReturn
+    let cancelled = try inspectPicker(targets, defaults: defaults) { window, view in
+        try expect(window.defaultButtonCell?.title == "Copy Plain Text", "An unavailable target did not fall back to the first card.")
+        try expect(buttons(in: view).contains { $0.title == "Cancel" }, "Cancel is missing from the picker.")
+        press("\u{1b}", key: kVK_Escape, in: window)
     }
     try expect(cancelled.target == nil, "A cancelled picker supplied a target.")
 
-    afterModalStarts { NSApp.stopModal(withCode: .alertSecondButtonReturn) }
-    let dismissed = try choose(targets, rememberingIn: defaults)
+    let dismissed = try inspectPicker(targets, defaults: defaults) { _, _ in NSApp.abortModal() }
     try expect(dismissed.target == nil, "A real modal dismissal selected a target.")
     afterModalStarts { NSApp.stopModal(withCode: .alertFirstButtonReturn) }
     let response = runDesktopAlert(NSAlert())
     try expect(response == .alertFirstButtonReturn, "A desktop alert did not return its modal response.")
     NSApp.setActivationPolicy(.prohibited)
+}
+
+@MainActor
+private func pickerLayoutInvariants(_ defaults: UserDefaults, targets: [Target]) throws {
+    guard let telegram = targets.first(where: { $0.id == "telegram" }) else {
+        throw Failure("The layout test needs Telegram.")
+    }
+    let columnsKey = "copied-md.pickerColumns"
+    let hiddenKey = "copied-md.pickerHiddenFormats"
+    defer {
+        defaults.removeObject(forKey: columnsKey)
+        defaults.removeObject(forKey: hiddenKey)
+    }
+    defaults.set("telegram", forKey: preferenceKey)
+    let longCatalog = targets + (1...5).map { Target(id: "custom-\($0)", label: "Custom \($0)") }
+    try expect(longCatalog.allSatisfy { FormatIcon(for: $0.id).image?.isValid == true }, "A format has no usable icon.")
+
+    func settings(in view: NSView, submenu: String) throws -> NSMenu {
+        guard let button = view.subviews.compactMap({ $0 as? NSPopUpButton }).first,
+              let menu = button.menu?.item(withTitle: submenu)?.submenu else {
+            throw Failure("The format grid is missing \(submenu) settings.")
+        }
+        return menu
+    }
+
+    func chooseSetting(_ title: String, in menu: NSMenu) throws {
+        guard let item = menu.item(withTitle: title), let action = item.action, item.isEnabled else {
+            throw Failure("The format grid is missing an enabled \(title) option.")
+        }
+        try expect(NSApp.sendAction(action, to: item.target, from: item), "Could not apply the \(title) setting.")
+    }
+
+    _ = try inspectPicker(longCatalog, defaults: defaults) { window, view in
+        let originalWidth = view.bounds.width
+        try chooseSetting("3 Columns", in: settings(in: view, submenu: "Columns"))
+        guard let updated = window.contentView else { throw Failure("Settings removed the grid.") }
+        try expect(updated.bounds.width < originalWidth, "Changing the column count did not resize the grid.")
+        try expect(updated.subviews.contains { $0 is NSScrollView }, "The long grid did not allow scrolling.")
+        try chooseSetting("Telegram", in: settings(in: updated, submenu: "Show Formats"))
+        try expect(window.defaultButtonCell?.title == "Copy Rich Text", "Hiding the selected card did not update Copy.")
+        NSApp.abortModal()
+    }
+    try expect(defaults.integer(forKey: columnsKey) == 3 && defaults.stringArray(forKey: hiddenKey) == ["telegram"],
+               "The customized grid was not saved.")
+    _ = try inspectPicker(targets, defaults: defaults) { window, view in
+        let columns = try settings(in: view, submenu: "Columns")
+        try expect(columns.item(withTitle: "3 Columns")?.state == .on, "The configured columns were not restored.")
+        try expect(!buttons(in: view).contains { $0.title == "Telegram" }, "A hidden card was shown on reopening.")
+        try chooseSetting("Telegram", in: settings(in: view, submenu: "Show Formats"))
+        try expect(window.defaultButtonCell?.title == "Copy Telegram", "Restoring the last-used card did not select it.")
+        NSApp.abortModal()
+    }
+
+    let copied = CopiedFormat(target: telegram, warning: "Example warning")
+    let done = try inspectPicker([telegram], defaults: defaults, copied: copied) { window, view in
+        let menu = try settings(in: view, submenu: "Show Formats")
+        try expect(menu.item(withTitle: "Telegram")?.isEnabled == false, "The only format could be hidden.")
+        let labels = view.subviews.compactMap { ($0 as? NSTextField)?.stringValue }
+        try expect(labels.contains("Copied as Telegram") && labels.contains("Example warning"),
+                   "The picker omitted the automatic copy or its conversion warning.")
+        try expect(window.defaultButtonCell?.title == "Done", "An already-completed copy did not have a Done action.")
+        guard let card = buttons(in: view).compactMap({ $0 as? FormatCard }).first,
+              let bitmap = card.bitmapImageRepForCachingDisplay(in: card.bounds),
+              let event = NSEvent.enterExitEvent(with: .mouseEntered, location: .zero, modifierFlags: [], timestamp: 0,
+                                                  windowNumber: window.windowNumber, context: nil, eventNumber: 0,
+                                                  trackingNumber: 0, userData: nil) else {
+            throw Failure("Could not render a format card for the pointer interaction.")
+        }
+        card.mouseEntered(with: event)
+        card.highlight(true)
+        card.cacheDisplay(in: card.bounds, to: bitmap)
+        card.highlight(false)
+        card.mouseExited(with: event)
+        NSGraphicsContext.saveGraphicsState()
+        NSGraphicsContext.current = NSGraphicsContext(bitmapImageRep: bitmap)
+        card.drawFocusRingMask()
+        NSGraphicsContext.restoreGraphicsState()
+        press("\r", key: kVK_Return, in: window)
+    }
+    try expect(done.target == "telegram", "Done did not retain the already-copied target.")
 }
 
 @MainActor
@@ -301,10 +440,11 @@ private struct TestRuntime: MarkdownRuntime {
     var failCatalog = false
     var failConversion = false
     var representations: [String: String]? = nil
+    var formats = [Target(id: "plain-text", label: "Plain Text")]
 
     func targets() throws -> [Target] {
         if failCatalog { throw Failure("Catalog unavailable") }
-        return [Target(id: "plain-text", label: "Plain Text")]
+        return formats
     }
 
     func convert(_ text: String, to target: String) throws -> DesktopConversion {
@@ -313,6 +453,61 @@ private struct TestRuntime: MarkdownRuntime {
                                  representations: representations ?? ["text/plain": "Converted: " + text],
                                  diagnostics: warning ? [.init(severity: "warning", message: "Example warning")] : [])
     }
+}
+
+@MainActor
+private func shortcutCopyInvariants(_ defaults: UserDefaults) async throws {
+    let formats = [Target(id: "plain-text", label: "Plain Text"), Target(id: "telegram", label: "Telegram")]
+    let board = InterleavedPasteboard()
+    defaults.set("plain-text", forKey: preferenceKey)
+    var selected: String? = "telegram"
+    var visited = 0
+    var competingCopy = false
+    var alerts: [String] = []
+    let desktop = DesktopApp(runtime: TestRuntime(warning: false, formats: formats), defaults: defaults,
+                             clipboardDefaults: defaults, clipboard: { board }, chooseFormat: { _, copied in
+        visited += 1
+        try expect(copied?.target.id == defaults.string(forKey: preferenceKey) && board.text == "Converted: Original",
+                   "The shortcut did not copy its target before opening the picker.")
+        if competingCopy {
+            board.text = "New external text"
+            board.changeCount += 1
+        }
+        return Choice(target: selected)
+    }, runAlert: { alert in
+        alerts.append(alert.messageText)
+        return .alertFirstButtonReturn
+    })
+    defer { desktop.feedback?.cancel() }
+
+    await desktop.startCopy(mode: .copyAndPick)?.value
+    try expect(visited == 1 && board.writeCalls == 2 && board.text == "Converted: Original",
+               "Replacing the first copy did not use the original Markdown.")
+    try expect(defaults.string(forKey: preferenceKey) == "telegram", "Replacing the first copy did not remember the new format.")
+
+    board.text = "Original"
+    await desktop.startCopy(mode: .copyAndPick)?.value
+    try expect(visited == 2 && board.writeCalls == 3, "Confirming the already-copied format wrote a second time.")
+
+    board.text = "Original"
+    selected = nil
+    await desktop.startCopy(mode: .copyAndPick)?.value
+    try expect(visited == 3 && board.writeCalls == 4 && board.text == "Converted: Original",
+               "Dismissing the picker did not retain the first copy.")
+
+    board.text = "Original"
+    await desktop.startCopy(mode: .copyOnly)?.value
+    try expect(visited == 3 && board.writeCalls == 5 && board.text == "Converted: Original",
+               "Copy-only mode opened the picker or failed to write.")
+
+    board.text = "Original"
+    selected = "plain-text"
+    competingCopy = true
+    await desktop.startCopy(mode: .copyAndPick)?.value
+    try expect(visited == 4 && board.writeCalls == 6 && board.text == "New external text",
+               "Overriding the first copy overwrote a newer clipboard value.")
+    try expect(alerts.last?.contains("clipboard changed") == true && defaults.string(forKey: preferenceKey) == "telegram",
+               "A failed replacement did not preserve the last successful format.")
 }
 
 @MainActor
@@ -336,7 +531,7 @@ private func desktopCopyInvariants(_ defaults: UserDefaults) async throws {
     var alerts: [(String, String)] = []
     let desktop = DesktopApp(
         runtime: TestRuntime(warning: true), defaults: defaults, clipboardDefaults: defaults,
-        clipboard: { board }, chooseFormat: { formats in
+        clipboard: { board }, chooseFormat: { formats, _ in
             try expect(formats.map(\.id) == ["plain-text"], "Desktop provided the wrong formats.")
             if writeExternalTextBeforeConversion {
                 board.changeCount += 1
@@ -397,7 +592,7 @@ private func desktopCopyInvariants(_ defaults: UserDefaults) async throws {
     board.text = "Markdown"
     let unavailable = DesktopApp(
         runtime: TestRuntime(warning: false, failCatalog: true), defaults: defaults,
-        clipboardDefaults: defaults, clipboard: { board }, chooseFormat: { _ in
+        clipboardDefaults: defaults, clipboard: { board }, chooseFormat: { _, _ in
             throw Failure("Picker should not open without a catalog.")
         },
         runAlert: { alert in
@@ -411,7 +606,7 @@ private func desktopCopyInvariants(_ defaults: UserDefaults) async throws {
 
     let conversionFailure = DesktopApp(
         runtime: TestRuntime(warning: false, failConversion: true), defaults: defaults,
-        clipboardDefaults: defaults, clipboard: { board }, chooseFormat: { _ in Choice(target: "plain-text") },
+        clipboardDefaults: defaults, clipboard: { board }, chooseFormat: { _, _ in Choice(target: "plain-text") },
         runAlert: { alert in
             alerts.append((alert.messageText, alert.informativeText))
             return .alertFirstButtonReturn
@@ -430,6 +625,14 @@ private func desktopCopyInvariants(_ defaults: UserDefaults) async throws {
     }
     await defaultPicker.startCopy()?.value
     try expect(board.changeCount == unchanged, "Losing focus in the picker wrote to the clipboard.")
+
+    afterModalStarts {
+        defaultPicker.applicationDidResignActive(Notification(name: NSApplication.didResignActiveNotification))
+    }
+    await defaultPicker.startCopy(mode: .copyAndPick)?.value
+    try expect(board.writeCalls == 2 && board.text == "Converted: Markdown",
+               "Switching to the paste destination did not dismiss the grid and retain the automatic copy.")
+    defaultPicker.feedback?.cancel()
 }
 
 private final class TestLoginService: LoginItemService {
@@ -575,6 +778,22 @@ private func desktopLifecycle(_ defaults: UserDefaults) throws {
     defer { working.applicationWillTerminate(termination) }
     try expect(working.menu.item(withTitle: "Use Keyboard Shortcut")?.state == .on, "Saved shortcut was not enabled.")
     installed?.onPress?()
+    guard let modeMenu = working.menu.item(withTitle: "Shortcut Behavior")?.submenu,
+          let pickerMode = modeMenu.item(withTitle: ShortcutCopyMode.picker.title), let action = pickerMode.action else {
+        throw Failure("The shortcut behavior menu did not offer picker-first mode.")
+    }
+    try expect(modeMenu.item(withTitle: ShortcutCopyMode.copyAndPick.title)?.state == .on,
+               "The default shortcut did not copy and show the picker.")
+    try expect(app.sendAction(action, to: pickerMode.target, from: pickerMode), "The shortcut mode did not reach the desktop.")
+    try expect(working.menu.item(withTitle: "Copy Markdown As…   " + shortcut.label) != nil,
+               "The shortcut was missing from the explicit copy action in picker-first mode.")
+    let currentMode = working.menu.item(withTitle: "Shortcut Behavior")?.submenu?.item(withTitle: ShortcutCopyMode.picker.title)
+    try expect(currentMode?.state == .on && defaults.integer(forKey: "keyboardShortcutCopyMode") == ShortcutCopyMode.picker.rawValue,
+               "The selected shortcut behavior was not saved or checked in the menu.")
+    defaults.set(-1, forKey: "keyboardShortcutCopyMode")
+    working.menuWillOpen(working.menu)
+    let fallbackMode = working.menu.item(withTitle: "Shortcut Behavior")?.submenu?.item(withTitle: ShortcutCopyMode.copyAndPick.title)
+    try expect(fallbackMode?.state == .on, "An invalid shortcut mode did not restore the default.")
     try expect(working.menu.item(withTitle: "Reset to Default Shortcut") != nil, "Custom shortcut cannot be reset.")
     try select("About copied.md", in: working)
     guard let workingWelcome = working.welcome.contentViewController as? NSHostingController<WelcomeView> else {
@@ -600,16 +819,15 @@ private func desktopLifecycle(_ defaults: UserDefaults) throws {
 
     let ownPID = ProcessInfo.processInfo.processIdentifier
     if let other = NSWorkspace.shared.runningApplications.first(where: { !$0.isTerminated && $0.processIdentifier != ownPID }) {
-        var restored: pid_t?
-        DesktopApp.restoreFocus(to: other, frontmost: nil) { restored = $0.processIdentifier }
-        try expect(restored == nil, "Restoring focus would interrupt another active application.")
-        DesktopApp.restoreFocus(to: other, frontmost: ownPID) { restored = $0.processIdentifier }
-        try expect(restored == other.processIdentifier, "The previous application did not regain focus.")
+        try expect(DesktopApp.applicationToRestore(other, frontmost: nil) == nil,
+                   "Restoring focus would interrupt another active application.")
+        try expect(DesktopApp.applicationToRestore(other, frontmost: ownPID)?.processIdentifier == other.processIdentifier,
+                   "The previous application was not eligible to regain focus.")
     }
-    DesktopApp.reactivate(.current)
 }
 
-private func runtimeInvariants(_ bundle: URL, node: URL, converter: URL) throws {
+@MainActor
+private func runtimeInvariants(_ bundle: URL, node: URL, converter: URL, defaults: UserDefaults) throws {
     let files = FileManager.default
     let helpers = bundle.appendingPathComponent("Contents/Helpers")
     let resources = bundle.appendingPathComponent("Contents/Resources")
@@ -622,6 +840,7 @@ private func runtimeInvariants(_ bundle: URL, node: URL, converter: URL) throws 
     let runtime = ConverterRuntime(bundleURL: bundle)
     let catalog = try runtime.targets()
     try expect(catalog.contains { $0.id == "telegram" }, "Bundled converter omitted Telegram.")
+    try pickerLayoutInvariants(defaults, targets: catalog)
     let result = try runtime.convert("**Ready** [Notes](https://example.org/notes)", to: "telegram")
     try expect(result.representations["text/plain"] == "Ready Notes (https://example.org/notes)",
                "Bundled conversion produced incorrect text.")
@@ -711,14 +930,15 @@ enum NativeTests {
         guard let defaults = UserDefaults(suiteName: suiteName) else { throw Failure("No isolated preferences.") }
         defer { defaults.removePersistentDomain(forName: suiteName) }
         try await hotKeyEvents()
+        try pickerInvariants(defaults)
         try runtimeInvariants(
             URL(fileURLWithPath: args[1]), node: URL(fileURLWithPath: args[2]),
-            converter: URL(fileURLWithPath: args[3])
+            converter: URL(fileURLWithPath: args[3]), defaults: defaults
         )
-        try pickerInvariants(defaults)
         try helperInvariants()
         try telegramSelfTestFailures()
         try await desktopCopyInvariants(defaults)
+        try await shortcutCopyInvariants(defaults)
         try desktopLifecycle(defaults)
         print("Native clipboard, picker, desktop, hotkey and converter runtime tests passed.")
     }
