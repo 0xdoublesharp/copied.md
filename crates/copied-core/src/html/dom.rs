@@ -17,7 +17,8 @@ use crate::limits::MAX_HTML_DEPTH;
 use html5ever::tendril::StrTendril;
 use html5ever::tokenizer::states::{RawKind, State};
 use html5ever::tokenizer::{
-    BufferQueue, EndTag, StartTag, Tag, Token, TokenSink, TokenSinkResult, Tokenizer, TokenizerOpts, TokenizerResult,
+    BufferQueue, EndTag, StartTag, Tag, Token, TokenSink, TokenSinkResult, Tokenizer,
+    TokenizerOpts, TokenizerResult,
 };
 use html5ever::tree_builder::{
     ElementFlags, NodeOrText, QuirksMode, TreeBuilder, TreeBuilderOpts, TreeSink, create_element,
@@ -44,11 +45,19 @@ pub(crate) struct HElement {
 
 impl HElement {
     pub(crate) fn new(name: &str, attrs: Vec<(String, String)>, children: Vec<HNode>) -> Self {
-        Self { name: name.to_owned(), attrs, children, explicit_close: false }
+        Self {
+            name: name.to_owned(),
+            attrs,
+            children,
+            explicit_close: false,
+        }
     }
 
     pub(crate) fn attr(&self, name: &str) -> Option<&str> {
-        self.attrs.iter().find(|(key, _)| key == name).map(|(_, value)| value.as_str())
+        self.attrs
+            .iter()
+            .find(|(key, _)| key == name)
+            .map(|(_, value)| value.as_str())
     }
 
     pub(crate) fn set_attr(&mut self, name: &str, value: String) {
@@ -83,7 +92,12 @@ pub(crate) struct Fragment {
 #[derive(Debug)]
 enum Data {
     Document,
-    Element { name: QualName, attrs: Vec<Attribute>, template_contents: Option<usize>, integration_point: bool },
+    Element {
+        name: QualName,
+        attrs: Vec<Attribute>,
+        template_contents: Option<usize>,
+        integration_point: bool,
+    },
     Text(String),
     Other,
 }
@@ -105,30 +119,116 @@ struct Sink {
 }
 
 const SPECIAL: &[&str] = &[
-    "address", "applet", "area", "article", "aside", "base", "basefont", "bgsound", "blockquote", "body", "br",
-    "button", "caption", "center", "col", "colgroup", "dd", "details", "dir", "div", "dl", "dt", "embed",
-    "fieldset", "figcaption", "figure", "footer", "form", "frame", "frameset", "h1", "h2", "h3", "h4", "h5", "h6",
-    "head", "header", "hgroup", "hr", "html", "iframe", "img", "input", "keygen", "li", "link", "listing", "main",
-    "marquee", "menu", "meta", "nav", "noembed", "noframes", "noscript", "object", "ol", "p", "param", "plaintext",
-    "pre", "script", "search", "section", "select", "source", "style", "summary", "table", "tbody", "td",
-    "template", "textarea", "tfoot", "th", "thead", "title", "tr", "track", "ul", "wbr", "xmp",
+    "address",
+    "applet",
+    "area",
+    "article",
+    "aside",
+    "base",
+    "basefont",
+    "bgsound",
+    "blockquote",
+    "body",
+    "br",
+    "button",
+    "caption",
+    "center",
+    "col",
+    "colgroup",
+    "dd",
+    "details",
+    "dir",
+    "div",
+    "dl",
+    "dt",
+    "embed",
+    "fieldset",
+    "figcaption",
+    "figure",
+    "footer",
+    "form",
+    "frame",
+    "frameset",
+    "h1",
+    "h2",
+    "h3",
+    "h4",
+    "h5",
+    "h6",
+    "head",
+    "header",
+    "hgroup",
+    "hr",
+    "html",
+    "iframe",
+    "img",
+    "input",
+    "keygen",
+    "li",
+    "link",
+    "listing",
+    "main",
+    "marquee",
+    "menu",
+    "meta",
+    "nav",
+    "noembed",
+    "noframes",
+    "noscript",
+    "object",
+    "ol",
+    "p",
+    "param",
+    "plaintext",
+    "pre",
+    "script",
+    "search",
+    "section",
+    "select",
+    "source",
+    "style",
+    "summary",
+    "table",
+    "tbody",
+    "td",
+    "template",
+    "textarea",
+    "tfoot",
+    "th",
+    "thead",
+    "title",
+    "tr",
+    "track",
+    "ul",
+    "wbr",
+    "xmp",
 ];
 
 pub(crate) const VOID: &[&str] = &[
-    "area", "base", "basefont", "bgsound", "br", "col", "command", "embed", "frame", "hr", "image", "img", "input",
-    "keygen", "link", "meta", "param", "source", "track", "wbr",
+    "area", "base", "basefont", "bgsound", "br", "col", "command", "embed", "frame", "hr", "image",
+    "img", "input", "keygen", "link", "meta", "param", "source", "track", "wbr",
 ];
 
 impl Sink {
     fn new() -> Self {
         Self {
-            nodes: vec![DomNode { data: Data::Document, parent: None, children: Vec::new(), explicit_close: false }],
+            nodes: vec![DomNode {
+                data: Data::Document,
+                parent: None,
+                children: Vec::new(),
+                explicit_close: false,
+            }],
             shadow: Vec::new(),
         }
     }
 
     fn push(&mut self, data: Data) -> usize {
-        self.nodes.push(DomNode { data, parent: None, children: Vec::new(), explicit_close: false });
+        self.nodes.push(DomNode {
+            data,
+            parent: None,
+            children: Vec::new(),
+            explicit_close: false,
+        });
         self.nodes.len() - 1
     }
 
@@ -159,13 +259,18 @@ impl Sink {
 
     /// Mirrors "any other end tag" closely enough to know which span an end tag closes.
     fn observe_end_tag(&mut self, name: &str) {
-        let Some(position) = self.shadow.iter().rposition(|&open| self.local(open) == Some(name)) else {
+        let Some(position) = self
+            .shadow
+            .iter()
+            .rposition(|&open| self.local(open) == Some(name))
+        else {
             return;
         };
         if name == "span"
-            && self.shadow[position + 1..]
-                .iter()
-                .any(|&open| self.local(open).is_some_and(|local| SPECIAL.contains(&local)))
+            && self.shadow[position + 1..].iter().any(|&open| {
+                self.local(open)
+                    .is_some_and(|local| SPECIAL.contains(&local))
+            })
         {
             return;
         }
@@ -178,7 +283,9 @@ impl Sink {
 
     fn append_text_to(&mut self, parent: usize, before: Option<usize>, text: &str) {
         let siblings = &self.nodes[parent].children;
-        let index = before.and_then(|b| siblings.iter().position(|&c| c == b)).unwrap_or(siblings.len());
+        let index = before
+            .and_then(|b| siblings.iter().position(|&c| c == b))
+            .unwrap_or(siblings.len());
         if index > 0 {
             let previous = siblings[index - 1];
             if let Data::Text(existing) = &mut self.nodes[previous].data {
@@ -197,7 +304,9 @@ impl Sink {
             NodeOrText::AppendNode(id) => {
                 self.detach(id);
                 let siblings = &self.nodes[parent].children;
-                let index = before.and_then(|b| siblings.iter().position(|&c| c == b)).unwrap_or(siblings.len());
+                let index = before
+                    .and_then(|b| siblings.iter().position(|&c| c == b))
+                    .unwrap_or(siblings.len());
                 self.nodes[id].parent = Some(parent);
                 self.nodes[parent].children.insert(index, id);
             }
@@ -226,9 +335,19 @@ impl TreeSink for Sink {
         }
     }
 
-    fn create_element(&mut self, name: QualName, attrs: Vec<Attribute>, flags: ElementFlags) -> usize {
+    fn create_element(
+        &mut self,
+        name: QualName,
+        attrs: Vec<Attribute>,
+        flags: ElementFlags,
+    ) -> usize {
         let template_contents = flags.template.then(|| self.push(Data::Document));
-        self.push(Data::Element { name, attrs, template_contents, integration_point: flags.mathml_annotation_xml_integration_point })
+        self.push(Data::Element {
+            name,
+            attrs,
+            template_contents,
+            integration_point: flags.mathml_annotation_xml_integration_point,
+        })
     }
 
     fn create_comment(&mut self, _text: StrTendril) -> usize {
@@ -248,7 +367,12 @@ impl TreeSink for Sink {
         self.observe_insertion(*parent, element);
     }
 
-    fn append_based_on_parent_node(&mut self, element: &usize, prev_element: &usize, child: NodeOrText<usize>) {
+    fn append_based_on_parent_node(
+        &mut self,
+        element: &usize,
+        prev_element: &usize,
+        child: NodeOrText<usize>,
+    ) {
         if self.nodes[*element].parent.is_some() {
             self.append_before_sibling(element, child);
         } else {
@@ -256,11 +380,20 @@ impl TreeSink for Sink {
         }
     }
 
-    fn append_doctype_to_document(&mut self, _name: StrTendril, _public_id: StrTendril, _system_id: StrTendril) {}
+    fn append_doctype_to_document(
+        &mut self,
+        _name: StrTendril,
+        _public_id: StrTendril,
+        _system_id: StrTendril,
+    ) {
+    }
 
     fn get_template_contents(&mut self, target: &usize) -> usize {
         match &self.nodes[*target].data {
-            Data::Element { template_contents: Some(contents), .. } => *contents,
+            Data::Element {
+                template_contents: Some(contents),
+                ..
+            } => *contents,
             _ => unreachable!("template contents requested for a non-template"),
         }
     }
@@ -278,7 +411,10 @@ impl TreeSink for Sink {
     }
 
     fn add_attrs_if_missing(&mut self, target: &usize, attrs: Vec<Attribute>) {
-        if let Data::Element { attrs: existing, .. } = &mut self.nodes[*target].data {
+        if let Data::Element {
+            attrs: existing, ..
+        } = &mut self.nodes[*target].data
+        {
             for attr in attrs {
                 if !existing.iter().any(|e| e.name == attr.name) {
                     existing.push(attr);
@@ -300,7 +436,13 @@ impl TreeSink for Sink {
     }
 
     fn is_mathml_annotation_xml_integration_point(&self, handle: &usize) -> bool {
-        matches!(self.nodes[*handle].data, Data::Element { integration_point: true, .. })
+        matches!(
+            self.nodes[*handle].data,
+            Data::Element {
+                integration_point: true,
+                ..
+            }
+        )
     }
 }
 
@@ -342,7 +484,9 @@ impl TokenSink for Feed<'_> {
         }
         let result = self.builder.process_token(token, line);
         match &result {
-            TokenSinkResult::RawData(kind) => self.mode.raw = Some((*kind, start_name.unwrap_or_default())),
+            TokenSinkResult::RawData(kind) => {
+                self.mode.raw = Some((*kind, start_name.unwrap_or_default()));
+            }
             TokenSinkResult::Plaintext => self.mode.plaintext = true,
             _ => {}
         }
@@ -350,14 +494,22 @@ impl TokenSink for Feed<'_> {
     }
 
     fn adjusted_current_node_present_but_not_in_html_namespace(&self) -> bool {
-        self.builder.adjusted_current_node_present_but_not_in_html_namespace()
+        self.builder
+            .adjusted_current_node_present_but_not_in_html_namespace()
     }
 }
 
 fn new_builder() -> Builder {
     let mut sink = Sink::new();
-    let context = create_element(&mut sink, QualName::new(None, ns!(html), local_name!("template")), Vec::new());
-    let opts = TreeBuilderOpts { scripting_enabled: false, ..TreeBuilderOpts::default() };
+    let context = create_element(
+        &mut sink,
+        QualName::new(None, ns!(html), local_name!("template")),
+        Vec::new(),
+    );
+    let opts = TreeBuilderOpts {
+        scripting_enabled: false,
+        ..TreeBuilderOpts::default()
+    };
     TreeBuilder::new_for_fragment(sink, context, None, opts)
 }
 
@@ -368,7 +520,11 @@ fn tokenize(builder: &mut Builder, mode: &mut TextMode, source: &str) {
         mode.raw.as_ref().map(|(kind, _)| State::RawData(*kind))
     };
     let last_start_tag_name = mode.raw.as_ref().map(|(_, name)| name.clone());
-    let opts = TokenizerOpts { initial_state, last_start_tag_name, ..TokenizerOpts::default() };
+    let opts = TokenizerOpts {
+        initial_state,
+        last_start_tag_name,
+        ..TokenizerOpts::default()
+    };
     let mut tokenizer = Tokenizer::new(Feed { builder, mode }, opts);
     let mut input = BufferQueue::default();
     input.push_back(StrTendril::from_slice(source));
@@ -388,7 +544,11 @@ fn finish(mut builder: Builder, source_for_eof: Option<&str>) -> Fragment {
             }
         }
     }
-    let root = sink.nodes[0].children.iter().copied().find(|&id| sink.local(id) == Some("html"));
+    let root = sink.nodes[0]
+        .children
+        .iter()
+        .copied()
+        .find(|&id| sink.local(id) == Some("html"));
     let mut fragment = Fragment::default();
     if let Some(root) = root {
         fragment.children = to_owned_tree(&sink, root, &mut fragment.depth_limited);
@@ -398,8 +558,12 @@ fn finish(mut builder: Builder, source_for_eof: Option<&str>) -> Fragment {
 
 /// Whether `source` ends with `</span\s*>` (ASCII case-insensitive).
 pub(crate) fn ends_with_span_close(source: &str) -> bool {
-    let trimmed = source.strip_suffix('>').map(|s| s.trim_end_matches(|c: char| c.is_ascii_whitespace()));
-    trimmed.is_some_and(|s| s.len() >= 6 && s.as_bytes()[s.len() - 6..].eq_ignore_ascii_case(b"</span"))
+    let trimmed = source
+        .strip_suffix('>')
+        .map(|s| s.trim_end_matches(|c: char| c.is_ascii_whitespace()));
+    trimmed.is_some_and(|s| {
+        s.len() >= 6 && s.as_bytes()[s.len() - 6..].eq_ignore_ascii_case(b"</span")
+    })
 }
 
 fn to_owned_tree(sink: &Sink, root: usize, limited: &mut bool) -> Vec<HNode> {
@@ -409,7 +573,11 @@ fn to_owned_tree(sink: &Sink, root: usize, limited: &mut bool) -> Vec<HNode> {
         element: Option<HElement>,
         children: Vec<HNode>,
     }
-    let mut stack = vec![Frame { pending: sink.nodes[root].children.clone().into_iter(), element: None, children: Vec::new() }];
+    let mut stack = vec![Frame {
+        pending: sink.nodes[root].children.clone().into_iter(),
+        element: None,
+        children: Vec::new(),
+    }];
     loop {
         let next = stack.last_mut().and_then(|frame| frame.pending.next());
         let Some(id) = next else {
@@ -430,23 +598,42 @@ fn to_owned_tree(sink: &Sink, root: usize, limited: &mut bool) -> Vec<HNode> {
                     frame.children.push(HNode::Text(text.clone()));
                 }
             }
-            Data::Element { name, attrs, template_contents, .. } => {
-                let child_ids = if template_contents.is_some() { Vec::new() } else { sink.nodes[id].children.clone() };
+            Data::Element {
+                name,
+                attrs,
+                template_contents,
+                ..
+            } => {
+                let child_ids = if template_contents.is_some() {
+                    Vec::new()
+                } else {
+                    sink.nodes[id].children.clone()
+                };
                 if stack.len() > MAX_HTML_DEPTH {
                     *limited = true;
                     // Flatten: splice this element's children into the current frame.
                     let frame = stack.last_mut().expect("frame");
-                    let rest: Vec<usize> = child_ids.into_iter().chain(frame.pending.by_ref()).collect();
+                    let rest: Vec<usize> = child_ids
+                        .into_iter()
+                        .chain(frame.pending.by_ref())
+                        .collect();
                     frame.pending = rest.into_iter();
                     continue;
                 }
                 let element = HElement {
                     name: name.local.to_string(),
-                    attrs: attrs.iter().map(|a| (a.name.local.to_string(), a.value.to_string())).collect(),
+                    attrs: attrs
+                        .iter()
+                        .map(|a| (a.name.local.to_string(), a.value.to_string()))
+                        .collect(),
                     children: Vec::new(),
                     explicit_close: sink.nodes[id].explicit_close,
                 };
-                stack.push(Frame { pending: child_ids.into_iter(), element: Some(element), children: Vec::new() });
+                stack.push(Frame {
+                    pending: child_ids.into_iter(),
+                    element: Some(element),
+                    children: Vec::new(),
+                });
             }
             Data::Document | Data::Other => {}
         }
@@ -475,7 +662,10 @@ impl std::fmt::Debug for RawBuilder {
 
 impl RawBuilder {
     pub(crate) fn new() -> Self {
-        Self { builder: new_builder(), mode: TextMode::default() }
+        Self {
+            builder: new_builder(),
+            mode: TextMode::default(),
+        }
     }
 
     fn in_text_mode(&self) -> bool {
@@ -498,7 +688,10 @@ impl RawBuilder {
                 })
                 .collect(),
         };
-        let mut feed = Feed { builder: &mut self.builder, mode: &mut self.mode };
+        let mut feed = Feed {
+            builder: &mut self.builder,
+            mode: &mut self.mode,
+        };
         let _ = feed.process_token(Token::TagToken(tag), 0);
     }
 
@@ -511,8 +704,16 @@ impl RawBuilder {
             Some((_, open)) => LocalName::from(open.as_str()),
             None => LocalName::from(name),
         };
-        let tag = Tag { kind: EndTag, name, self_closing: false, attrs: Vec::new() };
-        let mut feed = Feed { builder: &mut self.builder, mode: &mut self.mode };
+        let tag = Tag {
+            kind: EndTag,
+            name,
+            self_closing: false,
+            attrs: Vec::new(),
+        };
+        let mut feed = Feed {
+            builder: &mut self.builder,
+            mode: &mut self.mode,
+        };
         let _ = feed.process_token(Token::TagToken(tag), 0);
     }
 
@@ -520,7 +721,10 @@ impl RawBuilder {
         if value.is_empty() {
             return;
         }
-        let mut feed = Feed { builder: &mut self.builder, mode: &mut self.mode };
+        let mut feed = Feed {
+            builder: &mut self.builder,
+            mode: &mut self.mode,
+        };
         let _ = feed.process_token(Token::CharacterTokens(StrTendril::from_slice(value)), 0);
     }
 
@@ -556,22 +760,33 @@ mod tests {
     #[test]
     fn detects_explicit_span_closes() {
         let explicit = parse_fragment("<div>a <span>b</span> c</div>");
-        let HNode::Element(div) = &explicit.children[0] else { panic!() };
+        let HNode::Element(div) = &explicit.children[0] else {
+            panic!()
+        };
         let span = div.elements().next().unwrap();
         assert!(span.explicit_close);
 
         let by_div = parse_fragment("<div>a <span>b</div>");
-        let HNode::Element(div) = &by_div.children[0] else { panic!() };
+        let HNode::Element(div) = &by_div.children[0] else {
+            panic!()
+        };
         assert!(!div.elements().next().unwrap().explicit_close);
 
         let eof = parse_fragment("<span>a<span>b</span>");
-        let HNode::Element(outer) = &eof.children[0] else { panic!() };
-        assert!(outer.explicit_close, "source ends with </span>, like the parse5 position check");
+        let HNode::Element(outer) = &eof.children[0] else {
+            panic!()
+        };
+        assert!(
+            outer.explicit_close,
+            "source ends with </span>, like the parse5 position check"
+        );
 
         assert!(!ends_with_span_close("<em>\u{800}</em>"));
         assert!(ends_with_span_close("x</SPAN \n>"));
         let open = parse_fragment("<span>a");
-        let HNode::Element(span) = &open.children[0] else { panic!() };
+        let HNode::Element(span) = &open.children[0] else {
+            panic!()
+        };
         assert!(!span.explicit_close);
     }
 
@@ -590,7 +805,10 @@ mod tests {
         builder.start("em", &[]);
         builder.end("em");
         let fragment = builder.finish();
-        assert_eq!(names(&fragment.children), ["<p> after", "<textarea>x", "<plaintext>"]);
+        assert_eq!(
+            names(&fragment.children),
+            ["<p> after", "<textarea>x", "<plaintext>"]
+        );
     }
 
     #[test]
@@ -604,5 +822,56 @@ mod tests {
             nodes = &e.children;
         }
         assert!(depth <= MAX_HTML_DEPTH + 1);
+    }
+
+    #[test]
+    fn tree_sink_covers_parser_repairs() {
+        let cases = [
+            (
+                "<table>x<tr><td>y</td></tr></table>",
+                "x<table><tbody><tr><td>y",
+            ),
+            ("<b>1<p>2</b>3</p>", "<b>1<p><b>23"),
+            ("<template>t</template>z", "<template>z"),
+            ("<span>a<div>b</span>c</div>", "<span>a<div>bc"),
+            (
+                "<math><annotation-xml encoding=\"text/html\"><b>x</b></annotation-xml></math>",
+                "<math><annotation-xml><b>x",
+            ),
+            ("<a href=x>1<table><a>2</a></table></a>", "<a>1<a>2<table>"),
+        ];
+        for (source, expected) in cases {
+            assert_eq!(
+                names(&parse_fragment(source).children).concat(),
+                expected,
+                "{source}"
+            );
+        }
+        assert_eq!(
+            names(&parse_fragment("<!-- c -->a<?pi?>b").children).concat(),
+            "ab"
+        );
+        let merged = parse_fragment("<table><tr><td>a</td></tr>b<tr></tr>c</table>");
+        assert_eq!(
+            names(&merged.children).concat(),
+            "bc<table><tbody><tr><td>a<tr>"
+        );
+    }
+
+    #[test]
+    fn sink_trait_helpers_and_debug() {
+        let mut sink = Sink::new();
+        sink.parse_error("ignored".into());
+        sink.add_attrs_if_missing(&0, Vec::new());
+        assert_eq!(sink.finish().nodes.len(), 1);
+        let mut builder = RawBuilder::new();
+        builder.text("");
+        builder.raw("<plaintext>");
+        builder.raw("<b>still text");
+        assert!(format!("{builder:?}").contains("RawBuilder"));
+        assert_eq!(
+            names(&builder.finish().children),
+            ["<plaintext><b>still text"]
+        );
     }
 }

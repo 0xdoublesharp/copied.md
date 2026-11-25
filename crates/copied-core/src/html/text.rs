@@ -53,7 +53,9 @@ pub(crate) fn node_text(nodes: &[HNode], hooks: TextHooks<'_>) -> String {
                 }
                 let value = if name == "img" {
                     let alt = element.attr("alt").unwrap_or("");
-                    hooks.escape.map_or_else(|| alt.to_owned(), |escape| escape(alt))
+                    hooks
+                        .escape
+                        .map_or_else(|| alt.to_owned(), |escape| escape(alt))
                 } else {
                     node_text(&element.children, hooks)
                 };
@@ -83,8 +85,16 @@ mod tests {
 
     #[test]
     fn extracts_text_with_block_breaks() {
-        let text = html_text("<p>a<br>b</p><script>x</script><img alt=\"I\"><div>c</div>", TextHooks::default());
+        let text = html_text(
+            "<p>a<br>b</p><script>x</script><img alt=\"I\"><div>c</div>",
+            TextHooks::default(),
+        );
         assert_eq!(text, "a\nb\nIc\n");
+    }
+
+    #[test]
+    fn hooks_are_debuggable() {
+        assert!(format!("{:?}", TextHooks::default()).contains("TextHooks"));
     }
 
     #[test]
@@ -93,9 +103,17 @@ mod tests {
         let link = |_: &HElement, label: &str| format!("[{label}]");
         let span = |_: &HElement, content: &str| format!("({content})");
         let table = |_: &HElement| "T".to_owned();
-        let hooks = TextHooks { escape: Some(&escape), link: Some(&link), span: Some(&span), table: Some(&table) };
+        let hooks = TextHooks {
+            escape: Some(&escape),
+            link: Some(&link),
+            span: Some(&span),
+            table: Some(&table),
+        };
         assert_eq!(
-            html_text("<a>x</a><span>y</span><table><tr><td>z</td></tr></table><img alt=\"q\">", hooks),
+            html_text(
+                "<a>x</a><span>y</span><table><tr><td>z</td></tr></table><img alt=\"q\">",
+                hooks
+            ),
             "[X](Y)T\nQ"
         );
     }

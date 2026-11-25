@@ -9,8 +9,18 @@ use std::fmt::Write as _;
 
 /// HTML attributes whose hast property is a boolean.
 pub(crate) const BOOLEAN_ATTRS: &[&str] = &[
-    "checked", "compact", "disabled", "ismap", "itemscope", "multiple", "nohref", "noshade", "nowrap", "open",
-    "readonly", "selected",
+    "checked",
+    "compact",
+    "disabled",
+    "ismap",
+    "itemscope",
+    "multiple",
+    "nohref",
+    "noshade",
+    "nowrap",
+    "open",
+    "readonly",
+    "selected",
 ];
 
 fn escape_into(out: &mut String, value: &str, attribute: bool) {
@@ -77,13 +87,19 @@ mod tests {
     fn escapes_like_hast_util_to_html() {
         let element = HElement::new(
             "a",
-            vec![("href".into(), "a&b\"c'd`".into()), ("disabled".into(), String::new())],
+            vec![
+                ("href".into(), "a&b\"c'd`".into()),
+                ("disabled".into(), String::new()),
+            ],
             vec![HNode::Text("<x> & y".into())],
         );
         assert_eq!(
             serialize(&[HNode::Element(element)]),
             "<a href=\"a&#x26;b&#x22;c&#x27;d&#x60;\" disabled>&#x3C;x> &#x26; y</a>"
         );
-        assert_eq!(serialize(&[HNode::Element(HElement::new("br", vec![], vec![]))]), "<br>");
+        assert_eq!(
+            serialize(&[HNode::Element(HElement::new("br", vec![], vec![]))]),
+            "<br>"
+        );
     }
 }

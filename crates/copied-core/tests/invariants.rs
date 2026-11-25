@@ -5,8 +5,8 @@
 //! TypeScript suite).
 
 use copied_core::{
-    ConversionOptions, CopyTarget, DiagnosticCode, DiagnosticSeverity, MetricUnit, TARGETS, convert_markdown,
-    resolve_target,
+    ConversionOptions, CopyTarget, DiagnosticCode, DiagnosticSeverity, MetricUnit, TARGETS,
+    convert_markdown, resolve_target,
 };
 use html5ever::tendril::TendrilSink;
 use html5ever::{QualName, local_name, namespace_url, ns, parse_fragment};
@@ -15,7 +15,10 @@ use proptest::prelude::*;
 use proptest::string::string_regex;
 
 fn runs() -> u32 {
-    std::env::var("COPIED_MD_FUZZ_RUNS").ok().and_then(|v| v.parse().ok()).unwrap_or(200)
+    std::env::var("COPIED_MD_FUZZ_RUNS")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(200)
 }
 
 const FRAGMENTS: &[&str] = &[
@@ -68,7 +71,9 @@ fn assert_safe_html(html: &str) {
     for (index, _) in lower.match_indices('<') {
         let rest = &lower[index + 1..];
         let (closing, rest) = rest.strip_prefix('/').map_or((false, rest), |r| (true, r));
-        let Some(after) = rest.strip_prefix('a') else { continue };
+        let Some(after) = rest.strip_prefix('a') else {
+            continue;
+        };
         if after.starts_with(|c: char| c.is_whitespace() || c == '>') && after.contains('>') {
             depth += if closing { -1 } else { 1 };
             assert!((0..=1).contains(&depth), "link nesting in {html}");
@@ -77,20 +82,38 @@ fn assert_safe_html(html: &str) {
     assert_eq!(depth, 0, "unbalanced links in {html}");
 
     let context = QualName::new(None, ns!(html), local_name!("template"));
-    let dom: RcDom = parse_fragment(RcDom::default(), html5ever::ParseOpts::default(), context, Vec::new()).one(html);
+    let dom: RcDom = parse_fragment(
+        RcDom::default(),
+        html5ever::ParseOpts::default(),
+        context,
+        Vec::new(),
+    )
+    .one(html);
     let mut elements = Vec::new();
     element_children(&dom.document, &mut elements);
     let base = url::Url::parse("https://example.org/").expect("base");
     for element in elements {
-        let NodeData::Element { name, attrs, .. } = &element.data else { continue };
+        let NodeData::Element { name, attrs, .. } = &element.data else {
+            continue;
+        };
         let tag = name.local.to_string();
-        assert!(!["script", "iframe", "object", "embed", "style", "form"].contains(&tag.as_str()), "<{tag}> in {html}");
+        assert!(
+            !["script", "iframe", "object", "embed", "style", "form"].contains(&tag.as_str()),
+            "<{tag}> in {html}"
+        );
         for attr in attrs.borrow().iter() {
             let attr_name = attr.name.local.to_string();
-            assert!(!attr_name.to_ascii_lowercase().starts_with("on"), "{attr_name} in {html}");
+            assert!(
+                !attr_name.to_ascii_lowercase().starts_with("on"),
+                "{attr_name} in {html}"
+            );
             if attr_name == "href" || attr_name == "src" {
                 let parsed = base.join(&attr.value).expect("parsable URL");
-                assert!(["http", "https", "mailto"].contains(&parsed.scheme()), "{} in {html}", attr.value);
+                assert!(
+                    ["http", "https", "mailto"].contains(&parsed.scheme()),
+                    "{} in {html}",
+                    attr.value
+                );
             }
         }
     }
@@ -250,8 +273,19 @@ fn spoiler_document() -> impl Strategy<Value = String> {
         prop::sample::select(SAFE_FRAGMENTS).prop_map(str::to_owned),
         string_regex("[a-y .,]{1,30}").expect("regex"),
     ];
-    (prop::collection::vec(filler.clone(), 0..3), spoiler_context(), prop::collection::vec(filler, 0..3))
-        .prop_map(|(before, spoiler, after)| before.into_iter().chain([spoiler]).chain(after).collect::<Vec<_>>().join("\n\n"))
+    (
+        prop::collection::vec(filler.clone(), 0..3),
+        spoiler_context(),
+        prop::collection::vec(filler, 0..3),
+    )
+        .prop_map(|(before, spoiler, after)| {
+            before
+                .into_iter()
+                .chain([spoiler])
+                .chain(after)
+                .collect::<Vec<_>>()
+                .join("\n\n")
+        })
 }
 
 /// Byte ranges strictly inside `open … close` pairs (non-nested markers).
@@ -259,7 +293,9 @@ fn paired_regions(text: &str, open: &str, close: &str) -> Vec<(usize, usize)> {
     let mut regions = Vec::new();
     let mut from = 0;
     while let Some(start) = text[from..].find(open).map(|i| from + i + open.len()) {
-        let Some(end) = text[start..].find(close).map(|i| start + i) else { break };
+        let Some(end) = text[start..].find(close).map(|i| start + i) else {
+            break;
+        };
         regions.push((start, end));
         from = end + close.len();
     }
@@ -301,7 +337,9 @@ fn signal_regions(html: &str) -> Vec<(usize, usize)> {
 fn assert_hidden(value: &str, regions: &[(usize, usize)], what: &str) {
     for (index, _) in value.match_indices(TOKEN) {
         assert!(
-            regions.iter().any(|&(start, end)| index >= start && index + TOKEN.len() <= end),
+            regions
+                .iter()
+                .any(|&(start, end)| index >= start && index + TOKEN.len() <= end),
             "spoiler text leaked outside a spoiler in {what}: {value:?}"
         );
     }

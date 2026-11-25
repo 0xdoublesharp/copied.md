@@ -9,10 +9,59 @@ use super::dom::{HElement, HNode};
 use crate::url::safe_url;
 
 const TAG_NAMES: &[&str] = &[
-    "a", "b", "blockquote", "br", "code", "dd", "del", "details", "div", "dl", "dt", "em", "h1", "h2", "h3", "h4",
-    "h5", "h6", "hr", "i", "img", "input", "ins", "kbd", "li", "ol", "p", "picture", "pre", "q", "rp", "rt", "ruby",
-    "s", "samp", "section", "source", "span", "strike", "strong", "sub", "summary", "sup", "table", "tbody", "td",
-    "tfoot", "th", "thead", "tr", "tt", "ul", "var",
+    "a",
+    "b",
+    "blockquote",
+    "br",
+    "code",
+    "dd",
+    "del",
+    "details",
+    "div",
+    "dl",
+    "dt",
+    "em",
+    "h1",
+    "h2",
+    "h3",
+    "h4",
+    "h5",
+    "h6",
+    "hr",
+    "i",
+    "img",
+    "input",
+    "ins",
+    "kbd",
+    "li",
+    "ol",
+    "p",
+    "picture",
+    "pre",
+    "q",
+    "rp",
+    "rt",
+    "ruby",
+    "s",
+    "samp",
+    "section",
+    "source",
+    "span",
+    "strike",
+    "strong",
+    "sub",
+    "summary",
+    "sup",
+    "table",
+    "tbody",
+    "td",
+    "tfoot",
+    "th",
+    "thead",
+    "tr",
+    "tt",
+    "ul",
+    "var",
 ];
 
 /// Elements removed together with their content.
@@ -21,12 +70,69 @@ const STRIP: &[&str] = &["script", "style", "template", "iframe", "object"];
 const TABLE_PARTS: &[&str] = &["tbody", "td", "th", "thead", "tfoot", "tr"];
 
 const GLOBAL_ATTRS: &[&str] = &[
-    "abbr", "accept", "accept-charset", "accesskey", "action", "align", "alt", "axis", "border", "cellpadding",
-    "cellspacing", "char", "charoff", "charset", "checked", "clear", "colspan", "color", "cols", "compact",
-    "coords", "datetime", "dir", "enctype", "frame", "hspace", "headers", "height", "hreflang", "for", "id",
-    "ismap", "itemprop", "label", "lang", "maxlength", "media", "method", "multiple", "name", "nohref", "noshade",
-    "nowrap", "open", "prompt", "readonly", "rev", "rowspan", "rows", "rules", "scope", "selected", "shape",
-    "size", "span", "start", "summary", "tabindex", "title", "usemap", "valign", "value", "width",
+    "abbr",
+    "accept",
+    "accept-charset",
+    "accesskey",
+    "action",
+    "align",
+    "alt",
+    "axis",
+    "border",
+    "cellpadding",
+    "cellspacing",
+    "char",
+    "charoff",
+    "charset",
+    "checked",
+    "clear",
+    "colspan",
+    "color",
+    "cols",
+    "compact",
+    "coords",
+    "datetime",
+    "dir",
+    "enctype",
+    "frame",
+    "hspace",
+    "headers",
+    "height",
+    "hreflang",
+    "for",
+    "id",
+    "ismap",
+    "itemprop",
+    "label",
+    "lang",
+    "maxlength",
+    "media",
+    "method",
+    "multiple",
+    "name",
+    "nohref",
+    "noshade",
+    "nowrap",
+    "open",
+    "prompt",
+    "readonly",
+    "rev",
+    "rowspan",
+    "rows",
+    "rules",
+    "scope",
+    "selected",
+    "shape",
+    "size",
+    "span",
+    "start",
+    "summary",
+    "tabindex",
+    "title",
+    "usemap",
+    "valign",
+    "value",
+    "width",
 ];
 
 const ARIA: &[&str] = &["aria-describedby", "aria-label", "aria-labelledby"];
@@ -90,10 +196,29 @@ enum Value {
     List(Vec<Value>, bool),
 }
 
-const NUMBER_ATTRS: &[&str] =
-    &["cols", "height", "maxlength", "rows", "rowspan", "size", "span", "start", "tabindex", "width", "border", "hspace"];
+const NUMBER_ATTRS: &[&str] = &[
+    "cols",
+    "height",
+    "maxlength",
+    "rows",
+    "rowspan",
+    "size",
+    "span",
+    "start",
+    "tabindex",
+    "width",
+    "border",
+    "hspace",
+];
 const SPACE_ATTRS: &[&str] = &[
-    "accept-charset", "accesskey", "class", "headers", "for", "itemprop", "itemtype", "aria-describedby",
+    "accept-charset",
+    "accesskey",
+    "class",
+    "headers",
+    "for",
+    "itemprop",
+    "itemtype",
+    "aria-describedby",
     "aria-labelledby",
 ];
 
@@ -112,13 +237,23 @@ fn js_number(value: &str) -> Option<f64> {
         return Some(sign * f64::INFINITY);
     }
     let radix = |prefix: &[&str], radix| {
-        prefix.iter().find_map(|p| trimmed.strip_prefix(p)).and_then(|digits| u64::from_str_radix(digits, radix).ok())
+        prefix
+            .iter()
+            .find_map(|p| trimmed.strip_prefix(p))
+            .and_then(|digits| u64::from_str_radix(digits, radix).ok())
     };
     #[allow(clippy::cast_precision_loss)]
-    if let Some(n) = radix(&["0x", "0X"], 16).or_else(|| radix(&["0o", "0O"], 8)).or_else(|| radix(&["0b", "0B"], 2)) {
+    if let Some(n) = radix(&["0x", "0X"], 16)
+        .or_else(|| radix(&["0o", "0O"], 8))
+        .or_else(|| radix(&["0b", "0B"], 2))
+    {
         return Some(n as f64);
     }
-    if body.is_empty() || !body.bytes().all(|b| b.is_ascii_digit() || matches!(b, b'.' | b'e' | b'E' | b'+' | b'-')) {
+    if body.is_empty()
+        || !body
+            .bytes()
+            .all(|b| b.is_ascii_digit() || matches!(b, b'.' | b'e' | b'E' | b'+' | b'-'))
+    {
         return None;
     }
     body.parse::<f64>().ok().map(|n| sign * n)
@@ -127,7 +262,11 @@ fn js_number(value: &str) -> Option<f64> {
 /// JavaScript `String(number)` for finite and infinite values.
 pub(crate) fn js_number_string(n: f64) -> String {
     if n.is_infinite() {
-        return if n > 0.0 { "Infinity".into() } else { "-Infinity".into() };
+        return if n > 0.0 {
+            "Infinity".into()
+        } else {
+            "-Infinity".into()
+        };
     }
     if n == 0.0 {
         return "0".into();
@@ -139,7 +278,9 @@ pub(crate) fn js_number_string(n: f64) -> String {
 }
 
 fn primitive(attr: &str, value: &str) -> Value {
-    if super::serialize::BOOLEAN_ATTRS.contains(&attr) && (value.is_empty() || value.eq_ignore_ascii_case(attr)) {
+    if super::serialize::BOOLEAN_ATTRS.contains(&attr)
+        && (value.is_empty() || value.eq_ignore_ascii_case(attr))
+    {
         return Value::True;
     }
     if NUMBER_ATTRS.contains(&attr)
@@ -153,7 +294,9 @@ fn primitive(attr: &str, value: &str) -> Value {
 
 fn parse_value(attr: &str, value: &str) -> Value {
     if SPACE_ATTRS.contains(&attr) {
-        let items = value.split(['\t', '\n', '\x0c', '\r', ' ']).filter(|s| !s.is_empty());
+        let items = value
+            .split(['\t', '\n', '\x0c', '\r', ' '])
+            .filter(|s| !s.is_empty());
         return Value::List(items.map(|s| Value::Str(s.to_owned())).collect(), false);
     }
     if matches!(attr, "accept" | "coords") {
@@ -194,14 +337,20 @@ fn value_string(value: &Value) -> String {
 }
 
 fn safe_protocol(attr: &str, value: &Value) -> bool {
-    let Some(allowed) = protocols(attr) else { return true };
+    let Some(allowed) = protocols(attr) else {
+        return true;
+    };
     let url = value_string(value);
-    let Some(colon) = url.find(':') else { return true };
+    let Some(colon) = url.find(':') else {
+        return true;
+    };
     let before = |c: char| url.find(c).is_some_and(|i| colon > i);
     if before('/') || before('?') || before('#') {
         return true;
     }
-    allowed.iter().any(|p| colon == p.len() && url.starts_with(p))
+    allowed
+        .iter()
+        .any(|p| colon == p.len() && url.starts_with(p))
 }
 
 fn primitive_ok(attr: &str, allowed: Allowed, value: Value) -> Option<Value> {
@@ -213,7 +362,9 @@ fn primitive_ok(attr: &str, allowed: Allowed, value: Value) -> Option<Value> {
         Allowed::Value(expected) => value == Value::Str(expected.to_owned()),
         Allowed::True => value == Value::True,
         Allowed::LanguageClass => match &value {
-            Value::Str(s) => s.strip_prefix("language-").is_some_and(|rest| !rest.is_empty() && !rest.starts_with(['\n', '\r', '\u{2028}', '\u{2029}'])),
+            Value::Str(s) => s.strip_prefix("language-").is_some_and(|rest| {
+                !rest.is_empty() && !rest.starts_with(['\n', '\r', '\u{2028}', '\u{2029}'])
+            }),
             _ => false,
         },
     };
@@ -221,7 +372,10 @@ fn primitive_ok(attr: &str, allowed: Allowed, value: Value) -> Option<Value> {
         return None;
     }
     if CLOBBER.contains(&attr) {
-        return Some(Value::Str(format!("{CLOBBER_PREFIX}{}", value_string(&value))));
+        return Some(Value::Str(format!(
+            "{CLOBBER_PREFIX}{}",
+            value_string(&value)
+        )));
     }
     Some(value)
 }
@@ -246,7 +400,12 @@ fn clean_attrs(tag: &str, attrs: &[(String, String)]) -> Vec<(String, String)> {
         let value = parse_value(name, raw);
         let safe = specific(tag, name)
             .and_then(|allowed| property(name, allowed, &value))
-            .or_else(|| GLOBAL_ATTRS.contains(&name.as_str()).then_some(()).and_then(|()| property(name, Allowed::Any, &value)));
+            .or_else(|| {
+                GLOBAL_ATTRS
+                    .contains(&name.as_str())
+                    .then_some(())
+                    .and_then(|()| property(name, Allowed::Any, &value))
+            });
         if let Some(safe) = safe {
             result.push((name.clone(), value_string(&safe)));
         }
@@ -277,7 +436,12 @@ fn sanitize_children(nodes: Vec<HNode>, stack: &mut Vec<String>) -> Vec<HNode> {
                 }
                 if safe {
                     let attrs = clean_attrs(&name, &element.attrs);
-                    out.push(HNode::Element(HElement { name, attrs, children, explicit_close: element.explicit_close }));
+                    out.push(HNode::Element(HElement {
+                        name,
+                        attrs,
+                        children,
+                        explicit_close: element.explicit_close,
+                    }));
                 } else if !STRIP.contains(&name.as_str()) {
                     out.extend(children);
                 }
@@ -315,7 +479,9 @@ fn replace_images_with_labels(nodes: &mut [HNode]) {
 /// re-validated against the URL policy.
 pub(crate) fn prepare_links(nodes: &mut [HNode], source_url: Option<&str>) {
     for node in nodes.iter_mut() {
-        let HNode::Element(element) = node else { continue };
+        let HNode::Element(element) = node else {
+            continue;
+        };
         if element.name == "a" {
             replace_images_with_labels(&mut element.children);
         }
@@ -323,7 +489,11 @@ pub(crate) fn prepare_links(nodes: &mut [HNode], source_url: Option<&str>) {
             let alt = image_label(element);
             let href = safe_url(element.attr("src").unwrap_or(""), source_url);
             *node = match href {
-                Some(href) => HNode::Element(HElement::new("a", vec![("href".into(), href)], vec![HNode::Text(alt)])),
+                Some(href) => HNode::Element(HElement::new(
+                    "a",
+                    vec![("href".into(), href)],
+                    vec![HNode::Text(alt)],
+                )),
                 None => HNode::Text(alt),
             };
             continue;
@@ -387,26 +557,52 @@ mod tests {
     #[test]
     fn strips_dangerous_markup() {
         assert_eq!(
-            clean("<script>x</script><style>y</style><div onclick=\"bad()\"><b>Clean</b> <a href=\"vbscript:x\">U</a></div>"),
+            clean(
+                "<script>x</script><style>y</style><div onclick=\"bad()\"><b>Clean</b> <a href=\"vbscript:x\">U</a></div>"
+            ),
             "<div><b>Clean</b> <a>U</a></div>"
         );
-        assert_eq!(clean("<form><input type=text value=1></form>"), "<input value=\"1\" disabled type=\"checkbox\">");
-        assert_eq!(clean("<table><tr><td start=03>y</td></tr></table>"), "<table><tbody><tr><td start=\"3\">y</td></tr></tbody></table>");
+        assert_eq!(
+            clean("<form><input type=text value=1></form>"),
+            "<input value=\"1\" disabled type=\"checkbox\">"
+        );
+        assert_eq!(
+            clean("<table><tr><td start=03>y</td></tr></table>"),
+            "<table><tbody><tr><td start=\"3\">y</td></tr></tbody></table>"
+        );
         assert_eq!(clean("<tr><td>x</td></tr>"), "x");
     }
 
     #[test]
     fn filters_classes_and_clobbers_ids() {
-        assert_eq!(clean("<code class=\"language-rs x\">a</code>"), "<code class=\"language-rs\">a</code>");
-        assert_eq!(clean("<p class=x id=a aria-describedby=\"b c\">t</p>"), "<p id=\"user-content-a\">t</p>");
-        assert_eq!(clean("<a href=\"#a\">x</a><b id=\"a\">y</b>"), "<a href=\"#user-content-a\">x</a><b id=\"user-content-a\">y</b>");
-        assert_eq!(clean("<ul aria-describedby=\"b c\" class=y></ul>"), "<ul aria-describedby=\"user-content-b user-content-c\" class=\"\"></ul>");
+        assert_eq!(
+            clean("<code class=\"language-rs x\">a</code>"),
+            "<code class=\"language-rs\">a</code>"
+        );
+        assert_eq!(
+            clean("<p class=x id=a aria-describedby=\"b c\">t</p>"),
+            "<p id=\"user-content-a\">t</p>"
+        );
+        assert_eq!(
+            clean("<a href=\"#a\">x</a><b id=\"a\">y</b>"),
+            "<a href=\"#user-content-a\">x</a><b id=\"user-content-a\">y</b>"
+        );
+        assert_eq!(
+            clean("<ul aria-describedby=\"b c\" class=y></ul>"),
+            "<ul aria-describedby=\"user-content-b user-content-c\" class=\"\"></ul>"
+        );
     }
 
     #[test]
     fn converts_images() {
-        assert_eq!(clean("<img src=\"https://x.test/i.png\" alt=\"I\">"), "<a href=\"https://x.test/i.png\">I</a>");
-        assert_eq!(clean("<a href=\"https://x.test\"><img src=\"./a.png\"></a>"), "<a href=\"https://x.test\">Image</a>");
+        assert_eq!(
+            clean("<img src=\"https://x.test/i.png\" alt=\"I\">"),
+            "<a href=\"https://x.test/i.png\">I</a>"
+        );
+        assert_eq!(
+            clean("<a href=\"https://x.test\"><img src=\"./a.png\"></a>"),
+            "<a href=\"https://x.test\">Image</a>"
+        );
         assert_eq!(clean("<img src=\"javascript:x\" alt=\"\">"), "Image");
     }
 
@@ -419,5 +615,41 @@ mod tests {
         assert_eq!(js_number("10%"), None);
         assert_eq!(js_number("-Infinity"), Some(f64::NEG_INFINITY));
         assert_eq!(js_number_string(f64::INFINITY), "Infinity");
+        assert_eq!(js_number_string(f64::NEG_INFINITY), "-Infinity");
+        assert_eq!(js_number_string(0.0), "0");
+        assert_eq!(js_number("+1"), Some(1.0));
+        assert_eq!(js_number("0o7"), Some(7.0));
+        assert_eq!(js_number("0b11"), Some(3.0));
+        assert_eq!(js_number(" "), Some(0.0));
+        assert_eq!(js_number("-"), None);
+    }
+
+    #[test]
+    fn normalizes_list_and_protocol_attributes() {
+        assert_eq!(
+            clean("<input accept=\"a, b,\">"),
+            "<input accept=\"a, b\" disabled type=\"checkbox\">"
+        );
+        assert_eq!(
+            clean("<input accept=\"a,,\" disabled=false type=CHECKBOX>"),
+            "<input accept=\"a, ,\" disabled type=\"checkbox\">"
+        );
+        assert_eq!(
+            clean("<span coords=\"1, 2.50,x\">c</span>"),
+            "<span coords=\"1, 2.5, x\">c</span>"
+        );
+        assert_eq!(
+            clean("<q cite=\"/x:y\">a</q><q cite=\"javascript:x\">b</q>"),
+            "<q cite=\"/x:y\">a</q><q>b</q>"
+        );
+        assert_eq!(
+            clean("<input checked=yes disabled=\"\">"),
+            "<input checked disabled type=\"checkbox\">"
+        );
+        assert_eq!(clean("<td width=\"10%\" colspan=2>x</td>"), "x");
+        assert_eq!(
+            clean("<table><tr><td width=\"10%\" rowspan=\" 2 \">x</td></tr></table>"),
+            "<table><tbody><tr><td width=\"10%\" rowspan=\"2\">x</td></tr></tbody></table>"
+        );
     }
 }

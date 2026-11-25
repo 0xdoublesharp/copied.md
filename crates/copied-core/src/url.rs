@@ -38,7 +38,11 @@ pub fn safe_url(value: &str, source_url: Option<&str>) -> Option<String> {
     if !ALLOWED_SCHEMES.contains(&parsed.scheme()) {
         return None;
     }
-    Some(if has_scheme_prefix(value) { value.to_owned() } else { parsed.as_str().to_owned() })
+    Some(if has_scheme_prefix(value) {
+        value.to_owned()
+    } else {
+        parsed.as_str().to_owned()
+    })
 }
 
 /// `micromark-util-sanitize-uri`'s `normalizeUri`: percent-encodes characters that
@@ -80,21 +84,14 @@ pub(crate) fn normalize_uri(value: &str) -> String {
 pub(crate) fn is_js_whitespace(ch: char) -> bool {
     matches!(
         ch,
-        '\u{9}'
-            | '\u{a}'
-            | '\u{b}'
-            | '\u{c}'
-            | '\u{d}'
-            | ' '
-            | '\u{a0}'
-            | '\u{1680}'
-            | '\u{2000}'..='\u{200a}'
-            | '\u{2028}'
-            | '\u{2029}'
-            | '\u{202f}'
-            | '\u{205f}'
-            | '\u{3000}'
-            | '\u{feff}'
+        '\u{9}' | '\u{a}' | '\u{b}' | '\u{c}' | '\u{d}' | ' ' | '\u{a0}' | '\u{1680}' | '\u{2000}'
+            ..='\u{200a}'
+                | '\u{2028}'
+                | '\u{2029}'
+                | '\u{202f}'
+                | '\u{205f}'
+                | '\u{3000}'
+                | '\u{feff}'
     )
 }
 
@@ -114,14 +111,27 @@ mod tests {
 
     #[test]
     fn keeps_safe_absolute_urls_verbatim() {
-        assert_eq!(safe_url("https://example.org/a b", None).as_deref(), Some("https://example.org/a b"));
-        assert_eq!(safe_url("MAILTO:x@y.z", None).as_deref(), Some("MAILTO:x@y.z"));
+        assert_eq!(
+            safe_url("https://example.org/a b", None).as_deref(),
+            Some("https://example.org/a b")
+        );
+        assert_eq!(
+            safe_url("MAILTO:x@y.z", None).as_deref(),
+            Some("MAILTO:x@y.z")
+        );
         assert_eq!(safe_url("#frag", None).as_deref(), Some("#frag"));
     }
 
     #[test]
     fn rejects_unsafe_and_relative_without_base() {
-        for value in ["javascript:alert(1)", "data:text/html,x", "vbscript:x", "file:///etc", "./rel", ""] {
+        for value in [
+            "javascript:alert(1)",
+            "data:text/html,x",
+            "vbscript:x",
+            "file:///etc",
+            "./rel",
+            "",
+        ] {
             assert_eq!(safe_url(value, None), None, "{value}");
         }
         assert_eq!(safe_url("./x", Some("not a url")), None);
@@ -138,7 +148,10 @@ mod tests {
 
     #[test]
     fn normalizes_uris_like_micromark() {
-        assert_eq!(normalize_uri("https://example.com/café?q=\"x\"&y=z"), "https://example.com/caf%C3%A9?q=%22x%22&y=z");
+        assert_eq!(
+            normalize_uri("https://example.com/café?q=\"x\"&y=z"),
+            "https://example.com/caf%C3%A9?q=%22x%22&y=z"
+        );
         assert_eq!(normalize_uri("a%2Fb%zz %"), "a%2Fb%zz%20%25");
     }
 

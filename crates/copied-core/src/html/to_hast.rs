@@ -9,13 +9,21 @@ use std::collections::HashMap;
 /// Intermediate hast node before raw HTML is parsed.
 #[derive(Debug, Clone)]
 enum Hast {
-    Element { name: String, attrs: Vec<(&'static str, String)>, children: Vec<Hast> },
+    Element {
+        name: String,
+        attrs: Vec<(&'static str, String)>,
+        children: Vec<Hast>,
+    },
     Text(String),
     Raw(String),
 }
 
 fn el(name: &str, attrs: Vec<(&'static str, String)>, children: Vec<Hast>) -> Hast {
-    Hast::Element { name: name.to_owned(), attrs, children }
+    Hast::Element {
+        name: name.to_owned(),
+        attrs,
+        children,
+    }
 }
 
 fn text(value: impl Into<String>) -> Hast {
@@ -86,7 +94,8 @@ impl<'a> State<'a> {
         let mut values = Vec::new();
         for (index, node) in nodes.iter().enumerate() {
             let mut result = self.one(node, parent);
-            if index > 0 && matches!(nodes[index - 1], Node::Break)
+            if index > 0
+                && matches!(nodes[index - 1], Node::Break)
                 && let Some(first) = result.first_mut()
             {
                 match first {
@@ -108,13 +117,20 @@ impl<'a> State<'a> {
     fn one(&mut self, node: &'a Node, parent: Option<&'a Node>) -> Vec<Hast> {
         vec![match node {
             Node::Paragraph(children) => el("p", vec![], self.all(children, Some(node))),
-            Node::Heading { depth, children } => el(&format!("h{depth}"), vec![], self.all(children, Some(node))),
+            Node::Heading { depth, children } => {
+                el(&format!("h{depth}"), vec![], self.all(children, Some(node)))
+            }
             Node::ThematicBreak => el("hr", vec![], vec![]),
             Node::Blockquote(children) => {
                 let content = self.all(children, Some(node));
                 el("blockquote", vec![], wrap(content, true))
             }
-            Node::List { ordered, start, children, .. } => {
+            Node::List {
+                ordered,
+                start,
+                children,
+                ..
+            } => {
                 let results = self.all(children, Some(node));
                 let mut attrs = Vec::new();
                 if let Some(start) = start
@@ -122,23 +138,47 @@ impl<'a> State<'a> {
                 {
                     attrs.push(("start", start.to_string()));
                 }
-                let task = children.iter().any(|c| matches!(c, Node::ListItem { checked: Some(_), .. }));
+                let task = children.iter().any(|c| {
+                    matches!(
+                        c,
+                        Node::ListItem {
+                            checked: Some(_),
+                            ..
+                        }
+                    )
+                });
                 if task {
                     attrs.push(("class", "contains-task-list".to_owned()));
                 }
-                el(if *ordered { "ol" } else { "ul" }, attrs, wrap(results, true))
+                el(
+                    if *ordered { "ol" } else { "ul" },
+                    attrs,
+                    wrap(results, true),
+                )
             }
-            Node::ListItem { checked, children, spread } => {
+            Node::ListItem {
+                checked,
+                children,
+                spread,
+            } => {
                 let mut results = self.all(children, Some(node));
                 let loose = match parent {
-                    Some(Node::List { spread: list_spread, children: siblings, .. }) => {
-                        *list_spread || siblings.iter().any(|s| matches!(s, Node::ListItem { spread: true, .. }))
+                    Some(Node::List {
+                        spread: list_spread,
+                        children: siblings,
+                        ..
+                    }) => {
+                        *list_spread
+                            || siblings
+                                .iter()
+                                .any(|s| matches!(s, Node::ListItem { spread: true, .. }))
                     }
                     _ => *spread,
                 };
                 let mut attrs = Vec::new();
                 if let Some(checked) = checked {
-                    let head_is_p = matches!(results.first(), Some(Hast::Element { name, .. }) if name == "p");
+                    let head_is_p =
+                        matches!(results.first(), Some(Hast::Element { name, .. }) if name == "p");
                     if !head_is_p {
                         results.insert(0, el("p", vec![], vec![]));
                     }
@@ -157,14 +197,17 @@ impl<'a> State<'a> {
                 }
                 let mut out = Vec::new();
                 let count = results.len();
-                let tail_is_p = matches!(results.last(), Some(Hast::Element { name, .. }) if name == "p");
+                let tail_is_p =
+                    matches!(results.last(), Some(Hast::Element { name, .. }) if name == "p");
                 for (index, child) in results.into_iter().enumerate() {
                     let is_p = matches!(&child, Hast::Element { name, .. } if name == "p");
                     if loose || index != 0 || !is_p {
                         out.push(text("\n"));
                     }
                     match child {
-                        Hast::Element { name, children, .. } if name == "p" && !loose => out.extend(children),
+                        Hast::Element { name, children, .. } if name == "p" && !loose => {
+                            out.extend(children);
+                        }
                         other => out.push(other),
                     }
                 }
@@ -175,7 +218,11 @@ impl<'a> State<'a> {
             }
             Node::Html(value) => Hast::Raw(value.clone()),
             Node::Code { value, lang, .. } => {
-                let content = if value.is_empty() { String::new() } else { format!("{value}\n") };
+                let content = if value.is_empty() {
+                    String::new()
+                } else {
+                    format!("{value}\n")
+                };
                 let mut attrs = Vec::new();
                 if let Some(lang) = lang.as_deref().filter(|l| !l.is_empty()) {
                     let first = lang.split(char::is_whitespace).next().unwrap_or("");
@@ -192,7 +239,11 @@ impl<'a> State<'a> {
                 el("code", vec![], vec![text(value)])
             }
             Node::Break => return vec![el("br", vec![], vec![]), text("\n")],
-            Node::Link { url, title, children } => {
+            Node::Link {
+                url,
+                title,
+                children,
+            } => {
                 let mut attrs = vec![("href", normalize_uri(url))];
                 if let Some(title) = title {
                     attrs.push(("title", title.clone()));
@@ -206,7 +257,6 @@ impl<'a> State<'a> {
                 }
                 el("img", attrs, vec![])
             }
-            Node::LinkReference { children, .. } => return self.all(children, Some(node)),
             Node::FootnoteReference { identifier, .. } => {
                 let id = identifier.to_uppercase();
                 let safe_id = footnote_safe_id(identifier);
@@ -216,11 +266,19 @@ impl<'a> State<'a> {
                         self.order.push(id.clone());
                         self.order.len()
                     }
-                    Some(_) => self.order.iter().position(|o| *o == id).map_or(0, |i| i + 1),
+                    Some(_) => self
+                        .order
+                        .iter()
+                        .position(|o| *o == id)
+                        .map_or(0, |i| i + 1),
                 };
                 let count = reuse.unwrap_or(0) + 1;
                 self.counts.insert(id, count);
-                let suffix = if count > 1 { format!("-{count}") } else { String::new() };
+                let suffix = if count > 1 {
+                    format!("-{count}")
+                } else {
+                    String::new()
+                };
                 let link = el(
                     "a",
                     vec![
@@ -251,15 +309,22 @@ impl<'a> State<'a> {
             }
             Node::TableRow(_) => self.table_row(node, 1, &[]),
             Node::TableCell(children) => el("td", vec![], self.all(children, Some(node))),
-            Node::ImageReference { alt, .. } => text(alt.clone()),
-            Node::Definition { .. } | Node::FootnoteDefinition { .. } => return Vec::new(),
+            // References are resolved by the document pass.
+            Node::LinkReference { .. }
+            | Node::ImageReference { .. }
+            | Node::Definition { .. }
+            | Node::FootnoteDefinition { .. } => return Vec::new(),
         }]
     }
 
     fn table_row(&mut self, row: &'a Node, row_index: usize, align: &[crate::ast::Align]) -> Hast {
         let cells: &[Node] = row.children().map_or(&[], Vec::as_slice);
         let tag = if row_index == 0 { "th" } else { "td" };
-        let length = if align.is_empty() { cells.len() } else { align.len() };
+        let length = if align.is_empty() {
+            cells.len()
+        } else {
+            align.len()
+        };
         let mut out = Vec::with_capacity(length);
         for index in 0..length {
             let mut attrs = Vec::new();
@@ -292,7 +357,11 @@ impl<'a> State<'a> {
                 if !back.is_empty() {
                     back.push(text(" "));
                 }
-                let suffix = if rereference > 1 { format!("-{rereference}") } else { String::new() };
+                let suffix = if rereference > 1 {
+                    format!("-{rereference}")
+                } else {
+                    String::new()
+                };
                 let mut children = vec![text("↩")];
                 if rereference > 1 {
                     children.push(el("sup", vec![], vec![text(rereference.to_string())]));
@@ -302,7 +371,10 @@ impl<'a> State<'a> {
                     vec![
                         ("href", format!("#fnref-{safe_id}{suffix}")),
                         ("data-footnote-backref", String::new()),
-                        ("aria-label", format!("Back to reference {}{suffix}", reference_index + 1)),
+                        (
+                            "aria-label",
+                            format!("Back to reference {}{suffix}", reference_index + 1),
+                        ),
                         ("class", "data-footnote-backref".to_owned()),
                     ],
                     children,
@@ -318,7 +390,11 @@ impl<'a> State<'a> {
                 }
                 _ => content.extend(back),
             }
-            items.push(el("li", vec![("id", format!("fn-{safe_id}"))], wrap(content, true)));
+            items.push(el(
+                "li",
+                vec![("id", format!("fn-{safe_id}"))],
+                wrap(content, true),
+            ));
             reference_index += 1;
         }
         if items.is_empty() {
@@ -326,9 +402,19 @@ impl<'a> State<'a> {
         }
         Some(el(
             "section",
-            vec![("data-footnotes", String::new()), ("class", "footnotes".to_owned())],
             vec![
-                el("h2", vec![("class", "sr-only".to_owned()), ("id", "footnote-label".to_owned())], vec![text("Footnotes")]),
+                ("data-footnotes", String::new()),
+                ("class", "footnotes".to_owned()),
+            ],
+            vec![
+                el(
+                    "h2",
+                    vec![
+                        ("class", "sr-only".to_owned()),
+                        ("id", "footnote-label".to_owned()),
+                    ],
+                    vec![text("Footnotes")],
+                ),
                 text("\n"),
                 el("ol", vec![], wrap(items, true)),
                 text("\n"),
@@ -339,8 +425,13 @@ impl<'a> State<'a> {
 
 fn collect_footnotes<'a>(nodes: &'a [Node], map: &mut HashMap<String, &'a [Node]>) {
     for node in nodes {
-        if let Node::FootnoteDefinition { identifier, children } = node {
-            map.entry(identifier.to_uppercase()).or_insert(children.as_slice());
+        if let Node::FootnoteDefinition {
+            identifier,
+            children,
+        } = node
+        {
+            map.entry(identifier.to_uppercase())
+                .or_insert(children.as_slice());
         }
         if let Some(children) = node.children() {
             collect_footnotes(children, map);
@@ -353,7 +444,11 @@ fn feed(builder: &mut RawBuilder, nodes: &[Hast]) {
         match node {
             Hast::Text(value) => builder.text(value),
             Hast::Raw(value) => builder.raw(value),
-            Hast::Element { name, attrs, children } => {
+            Hast::Element {
+                name,
+                attrs,
+                children,
+            } => {
                 builder.start(name, attrs);
                 feed(builder, children);
                 builder.end(name);
@@ -366,7 +461,11 @@ fn feed(builder: &mut RawBuilder, nodes: &[Hast]) {
 pub(crate) fn to_html_tree(children: &[Node]) -> Fragment {
     let mut by_id = HashMap::new();
     collect_footnotes(children, &mut by_id);
-    let mut state = State { by_id, order: Vec::new(), counts: HashMap::new() };
+    let mut state = State {
+        by_id,
+        order: Vec::new(),
+        counts: HashMap::new(),
+    };
     let content = state.all(children, None);
     let mut root = wrap(content, false);
     if let Some(footer) = state.footer() {
@@ -385,5 +484,85 @@ mod tests {
     #[test]
     fn trims_line_edges() {
         assert_eq!(trim_lines("  a  \n  b  \r\n c "), "  a\nb\r\nc ");
+    }
+
+    use crate::document::read_markdown;
+    use crate::html::serialize::serialize;
+
+    fn html(nodes: &[Node]) -> String {
+        serialize(&to_html_tree(nodes).children)
+    }
+
+    #[test]
+    fn trims_space_after_breaks_and_pads_missing_cells() {
+        let tree = read_markdown(
+            "a\\\n&#32;b\\\n*&#32;c*\n\n| a | b |\n|---|:-:|\n| c |",
+            None,
+        )
+        .children;
+        assert_eq!(
+            html(&tree),
+            "<p>a<br>\nb<br>\n<em>c</em></p>\n<table>\n<thead>\n<tr>\n<th>a</th>\n<th align=\"center\">b</th>\n</tr>\n</thead>\n<tbody>\n<tr>\n<td>c</td>\n<td align=\"center\"></td>\n</tr>\n</tbody>\n</table>"
+        );
+        let image = read_markdown("![a](https://x.test/i.png \"T\")", None).children;
+        assert_eq!(
+            html(&image),
+            "<p><img src=\"https://x.test/i.png\" alt=\"a\" title=\"T\"></p>"
+        );
+    }
+
+    #[test]
+    fn task_items_without_a_leading_paragraph_get_one() {
+        let item = |children| Node::ListItem {
+            spread: false,
+            checked: Some(false),
+            children,
+        };
+        let code = Node::Code {
+            value: "x".into(),
+            lang: None,
+            meta: None,
+        };
+        let list = Node::List {
+            ordered: false,
+            start: None,
+            spread: false,
+            children: vec![item(vec![code]), item(vec![])],
+        };
+        assert_eq!(
+            html(&[list]),
+            "<ul class=\"contains-task-list\">\n<li class=\"task-list-item\"><input type=\"checkbox\" disabled>\n<pre><code>x\n</code></pre>\n</li>\n<li class=\"task-list-item\"><input type=\"checkbox\" disabled></li>\n</ul>"
+        );
+        assert_eq!(
+            html(&[Node::TableRow(vec![Node::TableCell(vec![Node::Text(
+                "c".into()
+            )])])]),
+            "<tr>\n<td>c</td>\n</tr>"
+        );
+    }
+
+    #[test]
+    fn footnote_footer_edge_cases() {
+        let reference = Node::Paragraph(vec![
+            Node::Text("x".into()),
+            Node::FootnoteReference {
+                identifier: "missing".into(),
+            },
+        ]);
+        assert_eq!(
+            html(&[reference]),
+            "<p>x<sup><a href=\"#fn-missing\" id=\"fnref-missing\" data-footnote-ref=\"\" aria-describedby=\"footnote-label\">1</a></sup></p>"
+        );
+        let code_note =
+            read_markdown("x[^a] y[^b]\n\n[^a]:\n        code\n[^b]: a *b*", None).children;
+        let out = html(&code_note);
+        assert!(
+            out.contains("<pre><code>code\n</code></pre>\n<a href=\"#fnref-a\""),
+            "{out}"
+        );
+        assert!(
+            out.contains("<p>a <em>b</em> <a href=\"#fnref-b\""),
+            "{out}"
+        );
     }
 }

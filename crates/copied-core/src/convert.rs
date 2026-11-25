@@ -7,30 +7,55 @@ use crate::render::spoilers::{self, Surface, neutralize, signal_spoiler_fallback
 use crate::render::text::{Telegram, TextOptions, render_text};
 use crate::render::xlen::{X_LIMIT, weighted_length};
 use crate::{
-    ClipboardPayload, ConversionMetrics, ConversionOptions, CopyTarget, Diagnostic, DiagnosticCode, DiagnosticSeverity,
-    MarkdownConversion, MetricUnit,
+    ClipboardPayload, ConversionMetrics, ConversionOptions, CopyTarget, Diagnostic, DiagnosticCode,
+    DiagnosticSeverity, MarkdownConversion, MetricUnit,
 };
 
 fn diagnostic(code: DiagnosticCode, severity: DiagnosticSeverity, message: &str) -> Diagnostic {
-    Diagnostic { code, severity, message: message.to_owned() }
+    Diagnostic {
+        code,
+        severity,
+        message: message.to_owned(),
+    }
 }
 
 fn spoiler_diagnostic(malformed: bool, app: &str) -> Diagnostic {
     if malformed {
-        diagnostic(DiagnosticCode::SpoilerOmitted, DiagnosticSeverity::Warning, "A malformed spoiler was omitted.")
+        diagnostic(
+            DiagnosticCode::SpoilerOmitted,
+            DiagnosticSeverity::Warning,
+            "A malformed spoiler was omitted.",
+        )
     } else {
         let message = format!("{app} can't show this spoiler here, so it was omitted.");
-        diagnostic(DiagnosticCode::SpoilerOmitted, DiagnosticSeverity::Info, &message)
+        diagnostic(
+            DiagnosticCode::SpoilerOmitted,
+            DiagnosticSeverity::Info,
+            &message,
+        )
     }
 }
 
 /// Converts Markdown for `target`. `improved` selects the greenfield behavior;
 /// `false` reproduces `ts-oracle-v1` byte for byte.
 #[allow(clippy::too_many_lines)]
-pub(crate) fn convert(markdown: &str, target: CopyTarget, options: &ConversionOptions, improved: bool) -> MarkdownConversion {
+pub(crate) fn convert(
+    markdown: &str,
+    target: CopyTarget,
+    options: &ConversionOptions,
+    improved: bool,
+) -> MarkdownConversion {
     let definition = target.definition();
-    let spoiler_target = improved && matches!(target, CopyTarget::Telegram | CopyTarget::Discord | CopyTarget::Reddit);
-    let source = if spoiler_target { neutralize(markdown) } else { std::borrow::Cow::Borrowed(markdown) };
+    let spoiler_target = improved
+        && matches!(
+            target,
+            CopyTarget::Telegram | CopyTarget::Discord | CopyTarget::Reddit
+        );
+    let source = if spoiler_target {
+        neutralize(markdown)
+    } else {
+        std::borrow::Cow::Borrowed(markdown)
+    };
     let source_url = options.source_url.as_deref();
     let document = read_markdown(&source, source_url);
     let children = &document.children;
@@ -38,19 +63,45 @@ pub(crate) fn convert(markdown: &str, target: CopyTarget, options: &ConversionOp
     let images = has_images(children);
 
     let malformed = spoiler_target
-        && signal_spoiler_fallback(&render_text(children, TextOptions { signal: true, improved, ..TextOptions::default() }))
-            .is_some_and(|fallback| fallback.malformed);
+        && signal_spoiler_fallback(&render_text(
+            children,
+            TextOptions {
+                signal: true,
+                improved,
+                ..TextOptions::default()
+            },
+        ))
+        .is_some_and(|fallback| fallback.malformed);
 
     let mut representations = ClipboardPayload::default();
     let plain = match target {
         CopyTarget::Discord | CopyTarget::Reddit => {
-            let flavor = if target == CopyTarget::Discord { Flavor::Discord } else { Flavor::Reddit };
-            let raw = render_markdown(children, MarkdownOptions { flavor, improved, spoilers: spoiler_target });
+            let flavor = if target == CopyTarget::Discord {
+                Flavor::Discord
+            } else {
+                Flavor::Reddit
+            };
+            let raw = render_markdown(
+                children,
+                MarkdownOptions {
+                    flavor,
+                    improved,
+                    spoilers: spoiler_target,
+                },
+            );
             if spoiler_target {
-                let surface = if flavor == Flavor::Discord { Surface::Discord } else { Surface::Reddit };
+                let surface = if flavor == Flavor::Discord {
+                    Surface::Discord
+                } else {
+                    Surface::Reddit
+                };
                 let resolved = spoilers::resolve(&raw, surface, !malformed);
                 if resolved.regions > 0 && (malformed || resolved.omitted > 0) {
-                    let app = if flavor == Flavor::Discord { "Discord" } else { "Reddit" };
+                    let app = if flavor == Flavor::Discord {
+                        "Discord"
+                    } else {
+                        "Reddit"
+                    };
                     diagnostics.push(spoiler_diagnostic(malformed, app));
                 }
                 resolved.text
@@ -66,23 +117,39 @@ pub(crate) fn convert(markdown: &str, target: CopyTarget, options: &ConversionOp
                     slack_paste: target == CopyTarget::SlackPaste,
                     whatsapp: target == CopyTarget::Whatsapp,
                     decorative_unicode: options.decorative_unicode
-                        && matches!(target, CopyTarget::Facebook | CopyTarget::Twitter | CopyTarget::Telegram),
+                        && matches!(
+                            target,
+                            CopyTarget::Facebook | CopyTarget::Twitter | CopyTarget::Telegram
+                        ),
                     telegram: (target == CopyTarget::Telegram).then_some(Telegram::Plain),
                     improved,
                     spoilers: spoiler_target,
                     ..TextOptions::default()
                 },
             );
-            if spoiler_target { spoilers::resolve(&raw, Surface::Plain, false).text } else { raw }
+            if spoiler_target {
+                spoilers::resolve(&raw, Surface::Plain, false).text
+            } else {
+                raw
+            }
         }
     };
     representations.plain = plain;
 
     if target == CopyTarget::Telegram {
-        let telegram = |mode| TextOptions { telegram: Some(mode), improved, spoilers: spoiler_target, ..TextOptions::default() };
+        let telegram = |mode| TextOptions {
+            telegram: Some(mode),
+            improved,
+            spoilers: spoiler_target,
+            ..TextOptions::default()
+        };
         if !representations.plain.is_empty() {
             let rtf = render_text(children, telegram(Telegram::Rtf));
-            representations.rtf = Some(if spoiler_target { spoilers::resolve(&rtf, Surface::Rtf, false).text } else { rtf });
+            representations.rtf = Some(if spoiler_target {
+                spoilers::resolve(&rtf, Surface::Rtf, false).text
+            } else {
+                rtf
+            });
         }
         let html = render_text(children, telegram(Telegram::Html));
         if spoiler_target {
@@ -103,14 +170,29 @@ pub(crate) fn convert(markdown: &str, target: CopyTarget, options: &ConversionOp
             representations.html = Some(html);
         }
     } else if target == CopyTarget::Signal {
-        let html = render_text(children, TextOptions { signal: true, improved, ..TextOptions::default() });
+        let html = render_text(
+            children,
+            TextOptions {
+                signal: true,
+                improved,
+                ..TextOptions::default()
+            },
+        );
         let fallback = signal_spoiler_fallback(&html);
         if let Some(fallback) = &fallback {
             representations.plain.clone_from(&fallback.plain);
             diagnostics.push(if fallback.malformed {
-                diagnostic(DiagnosticCode::SpoilerOmitted, DiagnosticSeverity::Warning, "A malformed Signal spoiler was omitted.")
+                diagnostic(
+                    DiagnosticCode::SpoilerOmitted,
+                    DiagnosticSeverity::Warning,
+                    "A malformed Signal spoiler was omitted.",
+                )
             } else {
-                diagnostic(DiagnosticCode::SpoilerOmitted, DiagnosticSeverity::Info, "Plain-text paste omits Signal spoilers.")
+                diagnostic(
+                    DiagnosticCode::SpoilerOmitted,
+                    DiagnosticSeverity::Info,
+                    "Plain-text paste omits Signal spoilers.",
+                )
             });
         }
         if !fallback.is_some_and(|f| f.malformed) {
@@ -124,7 +206,11 @@ pub(crate) fn convert(markdown: &str, target: CopyTarget, options: &ConversionOp
             _ => None,
         };
         let rich = render_rich_html(children, source_url, destination, improved);
-        if rich.depth_limited && !diagnostics.iter().any(|d| d.code == DiagnosticCode::InputLimitExceeded) {
+        if rich.depth_limited
+            && !diagnostics
+                .iter()
+                .any(|d| d.code == DiagnosticCode::InputLimitExceeded)
+        {
             diagnostics.push(diagnostic(
                 DiagnosticCode::InputLimitExceeded,
                 DiagnosticSeverity::Warning,
@@ -139,7 +225,11 @@ pub(crate) fn convert(markdown: &str, target: CopyTarget, options: &ConversionOp
     }
 
     if images && (definition.rich || target == CopyTarget::HtmlSource) {
-        diagnostics.push(diagnostic(DiagnosticCode::FormattingOmitted, DiagnosticSeverity::Info, "Images are represented as links."));
+        diagnostics.push(diagnostic(
+            DiagnosticCode::FormattingOmitted,
+            DiagnosticSeverity::Info,
+            "Images are represented as links.",
+        ));
     }
 
     let output = &representations.plain;
@@ -158,7 +248,11 @@ pub(crate) fn convert(markdown: &str, target: CopyTarget, options: &ConversionOp
         metrics: ConversionMetrics {
             source_code_units: markdown.encode_utf16().count(),
             output_length: weighted.unwrap_or_else(|| output.chars().count()),
-            unit: if weighted.is_some() { MetricUnit::XWeightedCharacters } else { MetricUnit::CodePoints },
+            unit: if weighted.is_some() {
+                MetricUnit::XWeightedCharacters
+            } else {
+                MetricUnit::CodePoints
+            },
             limit: weighted.map(|_| X_LIMIT),
         },
         representations,

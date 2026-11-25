@@ -13,7 +13,7 @@ pub const MAX_NESTING_DEPTH: usize = 128;
 /// Deepest HTML element nesting kept from raw HTML; deeper elements are flattened.
 pub const MAX_HTML_DEPTH: usize = 256;
 /// Most `[` characters accepted; `markdown-rs` label matching is quadratic in them.
-pub const MAX_LABEL_STARTS: usize = 20_000;
+pub const MAX_LABEL_STARTS: usize = 10_000;
 
 /// Why an input was not parsed as Markdown.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -77,7 +77,9 @@ fn block_prefix(line: &str) -> (usize, &str) {
                 quotes += 1;
                 index += 1;
             }
-            Some(b'-' | b'+' | b'*') if matches!(bytes.get(index + 1), None | Some(b' ' | b'\t')) => {
+            Some(b'-' | b'+' | b'*')
+                if matches!(bytes.get(index + 1), None | Some(b' ' | b'\t')) =>
+            {
                 markers += 1;
                 index += 1;
             }
@@ -122,7 +124,8 @@ fn inline_open(text: &str, mut open: usize, max: &mut usize, block: usize) -> us
         let after = chars.get(index).copied();
         let left = after.is_some_and(|c| !c.is_whitespace());
         let right = before.is_some_and(|c| !c.is_whitespace());
-        let intraword = before.is_some_and(char::is_alphanumeric) && after.is_some_and(char::is_alphanumeric);
+        let intraword =
+            before.is_some_and(char::is_alphanumeric) && after.is_some_and(char::is_alphanumeric);
         if ch == '_' && intraword {
             continue;
         }
@@ -142,7 +145,8 @@ mod tests {
 
     #[test]
     fn ordinary_documents_pass() {
-        let doc = "# Title\n\n- a\n  - b\n    - c\n\n> quote **bold** _it_ snake_case_name\n\n2*3*4*5";
+        let doc =
+            "# Title\n\n- a\n  - b\n    - c\n\n> quote **bold** _it_ snake_case_name\n\n2*3*4*5";
         assert_eq!(check(doc), None);
         assert!(estimated_depth(doc) < 20);
     }
@@ -152,8 +156,14 @@ mod tests {
         assert_eq!(check(&">".repeat(500)), Some(Limit::Depth));
         let list: String = (0..200).fold(String::new(), |acc, i| acc + &"  ".repeat(i) + "- a\n");
         assert_eq!(check(&list), Some(Limit::Depth));
-        assert_eq!(check(&format!("{}a", "*a ".repeat(300))), Some(Limit::Depth));
-        assert_eq!(check(&"[".repeat(MAX_LABEL_STARTS + 1)), Some(Limit::Labels));
+        assert_eq!(
+            check(&format!("{}a", "*a ".repeat(300))),
+            Some(Limit::Depth)
+        );
+        assert_eq!(
+            check(&"[".repeat(MAX_LABEL_STARTS + 1)),
+            Some(Limit::Labels)
+        );
         assert_eq!(check(&"a".repeat(MAX_INPUT_BYTES + 1)), Some(Limit::Bytes));
         assert_eq!(check("1234567890123. x"), None);
     }

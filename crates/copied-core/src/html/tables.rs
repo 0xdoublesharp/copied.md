@@ -10,20 +10,44 @@ fn cell_text(cell: &HElement, escape_pipes: bool) -> String {
         let url = safe_url(element.attr("href").unwrap_or(""), None);
         match url {
             Some(url) if !url.starts_with('#') && url != label => {
-                if label.is_empty() { url } else { format!("{label} ({url})") }
+                if label.is_empty() {
+                    url
+                } else {
+                    format!("{label} ({url})")
+                }
             }
             _ => label.to_owned(),
         }
     };
-    let text = node_text(&cell.children, TextHooks { link: Some(&link), ..TextHooks::default() });
+    let text = node_text(
+        &cell.children,
+        TextHooks {
+            link: Some(&link),
+            ..TextHooks::default()
+        },
+    );
     // `.replace(/\s+/g, ' ').trim()` with JavaScript whitespace.
-    let collapsed = text.split(crate::url::is_js_whitespace).filter(|s| !s.is_empty()).collect::<Vec<_>>().join(" ");
-    if escape_pipes { collapsed.replace('|', "\\|") } else { collapsed }
+    let collapsed = text
+        .split(crate::url::is_js_whitespace)
+        .filter(|s| !s.is_empty())
+        .collect::<Vec<_>>()
+        .join(" ");
+    if escape_pipes {
+        collapsed.replace('|', "\\|")
+    } else {
+        collapsed
+    }
 }
 
 /// Caption and rows of cell text from an HTML table element.
-pub(crate) fn table_cells(table: &HElement, escape_pipes: bool) -> (Option<String>, Vec<Vec<String>>) {
-    let caption = table.elements().find(|e| e.name == "caption").map(|c| cell_text(c, escape_pipes));
+pub(crate) fn table_cells(
+    table: &HElement,
+    escape_pipes: bool,
+) -> (Option<String>, Vec<Vec<String>>) {
+    let caption = table
+        .elements()
+        .find(|e| e.name == "caption")
+        .map(|c| cell_text(c, escape_pipes));
     let rows = table
         .elements()
         .filter(|e| matches!(e.name.as_str(), "thead" | "tbody" | "tfoot"))
@@ -42,7 +66,11 @@ pub(crate) fn table_cells(table: &HElement, escape_pipes: bool) -> (Option<Strin
 /// `tableAsText`: caption, then rows of cells joined with ` | `.
 pub(crate) fn table_as_text(table: &HElement) -> String {
     let (caption, rows) = table_cells(table, true);
-    caption.into_iter().chain(rows.iter().map(|row| row.join(" | "))).collect::<Vec<_>>().join("\n")
+    caption
+        .into_iter()
+        .chain(rows.iter().map(|row| row.join(" | ")))
+        .collect::<Vec<_>>()
+        .join("\n")
 }
 
 /// Monospace display width (East Asian wide characters count twice, combining
@@ -127,7 +155,11 @@ pub(crate) fn aligned_table_text(table: &HElement) -> String {
             .flat_map(HElement::elements)
             .find(|e| e.name == "tr")
             .is_some_and(|row| row.elements().any(|cell| cell.name == "th"));
-    caption.into_iter().chain(align_rows(&rows, header)).collect::<Vec<_>>().join("\n")
+    caption
+        .into_iter()
+        .chain(align_rows(&rows, header))
+        .collect::<Vec<_>>()
+        .join("\n")
 }
 
 #[cfg(test)]
@@ -136,10 +168,11 @@ mod tests {
     use crate::html::dom::{HNode, parse_fragment};
 
     fn table(source: &str) -> HElement {
-        match parse_fragment(source).children.remove(0) {
-            HNode::Element(e) => e,
-            HNode::Text(_) => panic!(),
-        }
+        let node = parse_fragment(source).children.remove(0);
+        let HNode::Element(element) = node else {
+            unreachable!("tables parse as elements")
+        };
+        element
     }
 
     #[test]
@@ -149,15 +182,25 @@ mod tests {
              <td><a href=\"https://example.org/named\">https://example.org/named</a></td>\
              <td><a href=\"#internal\">A|B</a></td><td><a href=\"javascript:x\">J</a></td></tr></tbody></table>",
         );
-        assert_eq!(table_as_text(&t), "Details\nhttps://example.org/bare | https://example.org/named | A\\|B | J");
+        assert_eq!(
+            table_as_text(&t),
+            "Details\nhttps://example.org/bare | https://example.org/named | A\\|B | J"
+        );
     }
 
     #[test]
     fn aligns_columns_without_trailing_spaces() {
-        let rows = vec![vec!["Service".into(), "Status".into()], vec!["Web".into(), "漢字".into()]];
-        assert_eq!(align_rows(&rows, true), ["Service | Status", "------- | ------", "Web     | 漢字"]);
+        let rows = vec![
+            vec!["Service".into(), "Status".into()],
+            vec!["Web".into(), "漢字".into()],
+        ];
+        assert_eq!(
+            align_rows(&rows, true),
+            ["Service | Status", "------- | ------", "Web     | 漢字"]
+        );
         let t = table("<table><tr><td>a</td><td>bb</td></tr><tr><td>ccc</td></tr></table>");
         assert_eq!(aligned_table_text(&t), "a   | bb\nccc");
         assert_eq!(display_width("e\u{301}👍🏽"), 3);
+        assert_eq!(display_width("🤖𠀀ｱ"), 5);
     }
 }

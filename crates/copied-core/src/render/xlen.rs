@@ -49,7 +49,30 @@ fn is_latin_accent(ch: char) -> bool {
 
 fn is_path_general(ch: char) -> bool {
     ch.is_ascii_alphanumeric()
-        || matches!(ch, '!' | '*' | '\'' | ';' | ':' | '=' | '+' | ',' | '.' | '$' | '/' | '%' | '#' | '[' | ']' | '-' | '\u{2013}' | '_' | '~' | '@' | '|' | '&')
+        || matches!(
+            ch,
+            '!' | '*'
+                | '\''
+                | ';'
+                | ':'
+                | '='
+                | '+'
+                | ','
+                | '.'
+                | '$'
+                | '/'
+                | '%'
+                | '#'
+                | '['
+                | ']'
+                | '-'
+                | '\u{2013}'
+                | '_'
+                | '~'
+                | '@'
+                | '|'
+                | '&'
+        )
         || ('\u{400}'..='\u{4ff}').contains(&ch)
         || is_latin_accent(ch)
 }
@@ -63,7 +86,32 @@ fn is_path_ending(ch: char) -> bool {
 
 fn is_query_char(ch: char) -> bool {
     ch.is_ascii_alphanumeric()
-        || matches!(ch, '!' | '?' | '*' | '\'' | '@' | '(' | ')' | ';' | ':' | '&' | '=' | '+' | '$' | '/' | '%' | '#' | '[' | ']' | '-' | '_' | '.' | ',' | '~' | '|')
+        || matches!(
+            ch,
+            '!' | '?'
+                | '*'
+                | '\''
+                | '@'
+                | '('
+                | ')'
+                | ';'
+                | ':'
+                | '&'
+                | '='
+                | '+'
+                | '$'
+                | '/'
+                | '%'
+                | '#'
+                | '['
+                | ']'
+                | '-'
+                | '_'
+                | '.'
+                | ','
+                | '~'
+                | '|'
+        )
 }
 
 fn is_query_ending(ch: char) -> bool {
@@ -71,19 +119,29 @@ fn is_query_ending(ch: char) -> bool {
 }
 
 fn is_preceding(ch: char) -> bool {
-    !(ch.is_ascii_alphanumeric() || matches!(ch, '@' | '＠' | '$' | '#' | '＃' | '\u{fffe}' | '\u{feff}' | '\u{ffff}'))
+    !(ch.is_ascii_alphanumeric()
+        || matches!(
+            ch,
+            '@' | '＠' | '$' | '#' | '＃' | '\u{fffe}' | '\u{feff}' | '\u{ffff}'
+        ))
 }
 
 fn starts_with_ci(chars: &[char], at: usize, needle: &str) -> bool {
     let count = needle.chars().count();
     chars.get(at..at + count).is_some_and(|window| {
-        window.iter().zip(needle.chars()).all(|(&ch, expected)| ch == expected || ch.to_lowercase().eq(expected.to_lowercase()))
+        window
+            .iter()
+            .zip(needle.chars())
+            .all(|(&ch, expected)| ch == expected || ch.to_lowercase().eq(expected.to_lowercase()))
     })
 }
 
 /// TLD (or punycode label) at `at`, honoring the `(?=[^0-9a-zA-Z@+-]|$)` lookahead.
 fn match_tld(chars: &[char], at: usize, limit: usize) -> Option<usize> {
-    let boundary = |end: usize| end >= limit || !(chars[end].is_ascii_alphanumeric() || matches!(chars[end], '@' | '+' | '-'));
+    let boundary = |end: usize| {
+        end >= limit
+            || !(chars[end].is_ascii_alphanumeric() || matches!(chars[end], '@' | '+' | '-'))
+    };
     for tld in TLDS {
         let len = tld.chars().count();
         if at + len <= limit && starts_with_ci(chars, at, tld) && boundary(at + len) {
@@ -104,7 +162,11 @@ fn match_tld(chars: &[char], at: usize, limit: usize) -> Option<usize> {
 
 /// Labels separated by dots starting at `start`: (label start, label end) where
 /// each label is followed by a dot.
-fn dotted_labels(chars: &[char], start: usize, allow: impl Fn(char) -> bool) -> Vec<(usize, usize)> {
+fn dotted_labels(
+    chars: &[char],
+    start: usize,
+    allow: impl Fn(char) -> bool,
+) -> Vec<(usize, usize)> {
     let mut labels = Vec::new();
     let mut index = start;
     loop {
@@ -123,14 +185,19 @@ fn dotted_labels(chars: &[char], start: usize, allow: impl Fn(char) -> bool) -> 
 fn valid_label(chars: &[char], (start, end): (usize, usize), extra: &[char]) -> bool {
     is_domain_char(chars[start])
         && is_domain_char(chars[end - 1])
-        && chars[start..end].iter().all(|&c| is_domain_char(c) || extra.contains(&c))
+        && chars[start..end]
+            .iter()
+            .all(|&c| is_domain_char(c) || extra.contains(&c))
 }
 
 /// `validDomain` at `start`; returns the domain end.
 fn match_domain(chars: &[char], start: usize) -> Option<usize> {
     let labels = dotted_labels(chars, start, |c| is_domain_char(c) || c == '-' || c == '_');
     for k in (0..labels.len()).rev() {
-        if !labels[..k].iter().all(|&label| valid_label(chars, label, &['-', '_'])) {
+        if !labels[..k]
+            .iter()
+            .all(|&label| valid_label(chars, label, &['-', '_']))
+        {
             continue;
         }
         if !valid_label(chars, labels[k], &['-']) {
@@ -217,21 +284,32 @@ struct UrlMatch {
 }
 
 fn match_url_body(chars: &[char], start: usize, before: Option<char>) -> Option<UrlMatch> {
-    let candidates: &[bool] = if starts_with_ci(chars, start, "https://") || starts_with_ci(chars, start, "http://") {
-        &[true, false]
-    } else {
-        &[false]
-    };
+    let candidates: &[bool] =
+        if starts_with_ci(chars, start, "https://") || starts_with_ci(chars, start, "http://") {
+            &[true, false]
+        } else {
+            &[false]
+        };
     for &protocol in candidates {
         let domain_start = if protocol {
-            start + if starts_with_ci(chars, start, "https://") { 8 } else { 7 }
+            start
+                + if starts_with_ci(chars, start, "https://") {
+                    8
+                } else {
+                    7
+                }
         } else {
             start
         };
-        let Some(domain_end) = match_domain(chars, domain_start) else { continue };
+        let Some(domain_end) = match_domain(chars, domain_start) else {
+            continue;
+        };
         let mut end = domain_end;
         if chars.get(end) == Some(&':') {
-            let digits = chars[end + 1..].iter().take_while(|c| c.is_ascii_digit()).count();
+            let digits = chars[end + 1..]
+                .iter()
+                .take_while(|c| c.is_ascii_digit())
+                .count();
             if digits > 0 {
                 end += 1 + digits;
             }
@@ -244,7 +322,14 @@ fn match_url_body(chars: &[char], start: usize, before: Option<char>) -> Option<
         if let Some(query_end) = match_query(chars, end) {
             end = query_end;
         }
-        return Some(UrlMatch { url_start: start, end, protocol, domain: (domain_start, domain_end), has_path, before });
+        return Some(UrlMatch {
+            url_start: start,
+            end,
+            protocol,
+            domain: (domain_start, domain_end),
+            has_path,
+            before,
+        });
     }
     None
 }
@@ -268,9 +353,13 @@ fn ascii_domains(chars: &[char], start: usize, end: usize) -> Vec<(usize, usize)
     let mut found = Vec::new();
     let mut index = start;
     while index < end {
-        let labels: Vec<(usize, usize)> =
-            dotted_labels(&chars[..end], index, allow).into_iter().take_while(|&(_, e)| e < end).collect();
-        let matched = (0..labels.len()).rev().find_map(|k| match_tld(chars, labels[k].1 + 1, end));
+        let labels: Vec<(usize, usize)> = dotted_labels(&chars[..end], index, allow)
+            .into_iter()
+            .take_while(|&(_, e)| e < end)
+            .collect();
+        let matched = (0..labels.len())
+            .rev()
+            .find_map(|k| match_tld(chars, labels[k].1 + 1, end));
         match matched {
             Some(stop) => {
                 found.push((index, stop));
@@ -299,7 +388,10 @@ fn tco_end(chars: &[char], m: &UrlMatch) -> Tco {
         return Tco::No;
     };
     let slug_start = start + prefix;
-    let slug = chars[slug_start..m.end].iter().take_while(|c| c.is_ascii_alphanumeric()).count();
+    let slug = chars[slug_start..m.end]
+        .iter()
+        .take_while(|c| c.is_ascii_alphanumeric())
+        .count();
     if slug == 0 {
         return Tco::No;
     }
@@ -323,7 +415,11 @@ fn extract_urls(chars: &[char]) -> Vec<(usize, usize)> {
             continue;
         };
         index = found.end.max(index + 1);
-        let protocol_len = if found.protocol { found.domain.0 - found.url_start } else { "https://".len() };
+        let protocol_len = if found.protocol {
+            found.domain.0 - found.url_start
+        } else {
+            "https://".len()
+        };
         if protocol_len + utf16_len(&chars[found.url_start..found.end]) > MAX_URL_LENGTH {
             continue;
         }
@@ -335,7 +431,10 @@ fn extract_urls(chars: &[char]) -> Vec<(usize, usize)> {
             }
             continue;
         }
-        if found.before.is_some_and(|c| matches!(c, '-' | '_' | '.' | '/')) {
+        if found
+            .before
+            .is_some_and(|c| matches!(c, '-' | '_' | '.' | '/'))
+        {
             continue;
         }
         let domains = ascii_domains(chars, found.domain.0, found.domain.1);
@@ -383,8 +482,12 @@ fn emoji_entities(chars: &[char]) -> Vec<(usize, usize)> {
 /// Weighted length of `text` in X characters.
 pub fn weighted_length(text: &str) -> usize {
     let chars: Vec<char> = text.nfc().collect();
-    let urls: std::collections::HashMap<usize, usize> = extract_urls(&chars).into_iter().map(|(s, e)| (s, e - s)).collect();
-    let emoji: std::collections::HashMap<usize, usize> = emoji_entities(&chars).into_iter().collect();
+    let urls: std::collections::HashMap<usize, usize> = extract_urls(&chars)
+        .into_iter()
+        .map(|(s, e)| (s, e - s))
+        .collect();
+    let emoji: std::collections::HashMap<usize, usize> =
+        emoji_entities(&chars).into_iter().collect();
     let mut weighted = 0;
     let mut index = 0;
     while index < chars.len() {
@@ -408,7 +511,10 @@ mod tests {
 
     #[test]
     fn weighs_cjk_and_urls() {
-        assert_eq!(weighted_length(&format!("{} https://example.com", "漢".repeat(140))), 304);
+        assert_eq!(
+            weighted_length(&format!("{} https://example.com", "漢".repeat(140))),
+            304
+        );
         assert_eq!(weighted_length("hello"), 5);
         assert_eq!(weighted_length("see example.com/path."), 4 + 23 + 1);
         assert_eq!(weighted_length("x.example.com:8080/a(b)c?q=1"), 23);
@@ -436,5 +542,29 @@ mod tests {
         assert_eq!(weighted_length("1\u{fe0f}\u{20e3}"), 2);
         assert_eq!(weighted_length("#\u{fe0f}\u{20e3} ok"), 5);
         assert_eq!(weighted_length("👍🏽👍"), 4);
+    }
+
+    #[test]
+    fn matches_twitter_text_edge_cases() {
+        let long_slug = format!("https://t.co/{}", "a".repeat(41));
+        let huge = format!("https://example.com/{}", "a".repeat(5000));
+        for (text, expected) in [
+            ("a.xn--p1ai/x", 23),
+            ("a_.b.com", 8),
+            ("x_y.example.com", 25),
+            ("http://t.co/abc", 23),
+            (long_slug.as_str(), 54),
+            ("https://t.co/", 23),
+            ("x.com/a(b(c)d)e", 23),
+            ("x.com/a(b", 25),
+            ("x.com:/a", 26),
+            ("x.com:80", 26),
+            (huge.as_str(), 5020),
+            ("go to EXAMPLE.COM now", 33),
+            ("https://example.com/(x)", 23),
+            ("x.com/@user/", 23),
+        ] {
+            assert_eq!(weighted_length(text), expected, "{text}");
+        }
     }
 }

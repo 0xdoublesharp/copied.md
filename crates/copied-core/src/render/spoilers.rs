@@ -35,7 +35,12 @@ fn is_sentinel(ch: char) -> bool {
 /// Replaces sentinel characters in source text with U+FFFD.
 pub(crate) fn neutralize(markdown: &str) -> Cow<'_, str> {
     if markdown.contains(is_sentinel) {
-        Cow::Owned(markdown.chars().map(|c| if is_sentinel(c) { '\u{FFFD}' } else { c }).collect())
+        Cow::Owned(
+            markdown
+                .chars()
+                .map(|c| if is_sentinel(c) { '\u{FFFD}' } else { c })
+                .collect(),
+        )
     } else {
         Cow::Borrowed(markdown)
     }
@@ -43,12 +48,18 @@ pub(crate) fn neutralize(markdown: &str) -> Cow<'_, str> {
 
 /// Whether a parsed span element is a Signal spoiler.
 pub(crate) fn is_spoiler_span(element: &HElement) -> bool {
-    element.attr("data-spoiler").is_some_and(|value| value.to_lowercase() == "true")
+    element
+        .attr("data-spoiler")
+        .is_some_and(|value| value.to_lowercase() == "true")
 }
 
 /// `signalSpanOpen`.
 pub(crate) fn signal_span_open(element: &HElement) -> &'static str {
-    if is_spoiler_span(element) { SPOILER_OPEN } else { "<span>" }
+    if is_spoiler_span(element) {
+        SPOILER_OPEN
+    } else {
+        "<span>"
+    }
 }
 
 fn starts_with_ci(haystack: &[char], at: usize, needle: &str) -> bool {
@@ -81,16 +92,25 @@ fn spoiler_value_matches(chars: &[char], mut index: usize) -> bool {
     for quote in ['"', '\''] {
         if chars.get(index) == Some(&quote)
             && starts_with_ci(chars, index + 1, "true")
-            && chars.get(index + 5).is_some_and(|&c| c != quote && !is_word(c))
+            && chars
+                .get(index + 5)
+                .is_some_and(|&c| c != quote && !is_word(c))
         {
             return true;
         }
     }
-    let start = if matches!(chars.get(index), Some('"' | '\'')) { index + 1 } else { index };
+    let start = if matches!(chars.get(index), Some('"' | '\'')) {
+        index + 1
+    } else {
+        index
+    };
     if !starts_with_ci(chars, start, "true") || chars.get(start + 4).copied().is_some_and(is_word) {
         return false;
     }
-    chars[start + 4..].iter().take_while(|&&c| c != '\n').all(|&c| c != '<' && c != '>')
+    chars[start + 4..]
+        .iter()
+        .take_while(|&&c| c != '\n')
+        .all(|&c| c != '<' && c != '>')
 }
 
 /// First char index of a partial `<span … data-spoiler="true` opening in text.
@@ -117,7 +137,10 @@ pub(crate) fn partial_spoiler_start(text: &str) -> Option<usize> {
         let mut candidate = index;
         loop {
             let boundary = !is_word(chars[candidate - 1]);
-            if boundary && starts_with_ci(&chars, candidate, "data-spoiler") && spoiler_value_matches(&chars, candidate + 12) {
+            if boundary
+                && starts_with_ci(&chars, candidate, "data-spoiler")
+                && spoiler_value_matches(&chars, candidate + 12)
+            {
                 return Some(chars[..start].iter().map(|c| c.len_utf8()).sum());
             }
             match chars.get(candidate) {
@@ -209,7 +232,10 @@ pub(crate) fn signal_spoiler_fallback(html: &str) -> Option<Fallback> {
     if spoiler_depth == 0 {
         visible.push_str(&html[cursor..]);
     }
-    Some(Fallback { plain: html_text(&visible, TextHooks::default()), malformed: malformed || spoiler_depth > 0 })
+    Some(Fallback {
+        plain: html_text(&visible, TextHooks::default()),
+        malformed: malformed || spoiler_depth > 0,
+    })
 }
 
 /// Output surface a sentinel stream was rendered for.
@@ -235,7 +261,9 @@ pub(crate) struct Resolved {
 fn inside_code_fence(before: &str) -> bool {
     let mut open = false;
     for line in before.split('\n') {
-        let trimmed = line.trim_start_matches(['>', ' ', '-', '*', '+', '.', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9']);
+        let trimmed = line.trim_start_matches([
+            '>', ' ', '-', '*', '+', '.', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9',
+        ]);
         if trimmed.starts_with("```") || trimmed.starts_with("~~~") {
             open = !open;
         }
@@ -249,11 +277,16 @@ fn html_balance(content: &str) -> (Vec<String>, Vec<String>) {
     let mut closes = Vec::new();
     let mut rest = content;
     while let Some(start) = rest.find('<') {
-        let Some(end) = rest[start..].find('>') else { break };
+        let Some(end) = rest[start..].find('>') else {
+            break;
+        };
         let tag = &rest[start + 1..start + end];
         rest = &rest[start + end + 1..];
         let (closing, body) = tag.strip_prefix('/').map_or((false, tag), |b| (true, b));
-        let name: String = body.chars().take_while(|c| c.is_ascii_alphanumeric() || *c == '-').collect();
+        let name: String = body
+            .chars()
+            .take_while(|c| c.is_ascii_alphanumeric() || *c == '-')
+            .collect();
         if name.is_empty() || name == "br" {
             continue;
         }
@@ -282,10 +315,17 @@ fn rtf_balance(content: &str) -> (usize, Vec<String>) {
             '{' => {
                 let mut prefix = String::from("{");
                 index += 1;
-                while chars.get(index) == Some(&'\\') && chars.get(index + 1).is_some_and(|c| c.is_ascii_alphabetic() || *c == '*') {
+                while chars.get(index) == Some(&'\\')
+                    && chars
+                        .get(index + 1)
+                        .is_some_and(|c| c.is_ascii_alphabetic() || *c == '*')
+                {
                     prefix.push('\\');
                     index += 1;
-                    while chars.get(index).is_some_and(|c| c.is_ascii_alphanumeric() || *c == '*' || *c == '-') {
+                    while chars
+                        .get(index)
+                        .is_some_and(|c| c.is_ascii_alphanumeric() || *c == '*' || *c == '-')
+                    {
                         prefix.push(chars[index]);
                         index += 1;
                     }
@@ -371,8 +411,11 @@ fn native(surface: Surface, before: &str, content: &str) -> Option<String> {
     match surface {
         Surface::TelegramHtml => {
             let (closes, opens) = html_balance(content);
-            let blocky = ["<pre", "</pre", "<blockquote", "</blockquote"].iter().any(|t| content.contains(t));
-            (closes.is_empty() && opens.is_empty() && !blocky).then(|| format!("<tg-spoiler>{content}</tg-spoiler>"))
+            let blocky = ["<pre", "</pre", "<blockquote", "</blockquote"]
+                .iter()
+                .any(|t| content.contains(t));
+            (closes.is_empty() && opens.is_empty() && !blocky)
+                .then(|| format!("<tg-spoiler>{content}</tg-spoiler>"))
         }
         Surface::Discord => (!content.is_empty()
             && !unescaped.contains("||")
@@ -383,7 +426,9 @@ fn native(surface: Surface, before: &str, content: &str) -> Option<String> {
             && !inside_code_fence(before))
         .then(|| format!("||{content}||")),
         Surface::Reddit => {
-            let unescaped_pipe = content.char_indices().any(|(i, c)| c == '|' && !content[..i].ends_with('\\'));
+            let unescaped_pipe = content
+                .char_indices()
+                .any(|(i, c)| c == '|' && !content[..i].ends_with('\\'));
             (!content.is_empty()
                 && !unescaped.starts_with('<')
                 && !content.contains('\n')
@@ -424,7 +469,9 @@ pub(crate) fn resolve(rendered: &str, surface: Surface, allow_native: bool) -> R
                 depth -= 1;
                 if depth == 0 {
                     resolved.regions += 1;
-                    let replacement = allow_native.then(|| native(surface, &out, &content)).flatten();
+                    let replacement = allow_native
+                        .then(|| native(surface, &out, &content))
+                        .flatten();
                     if let Some(native) = replacement {
                         out.push_str(&native);
                     } else {
@@ -451,54 +498,172 @@ mod tests {
 
     #[test]
     fn detects_partial_spoilers_like_the_regex() {
-        assert_eq!(partial_spoiler_start("Before <span data-spoiler=\"true\" private text"), Some(7));
-        assert_eq!(partial_spoiler_start("x <span class=x data-spoiler=\"true>private"), Some(2));
-        assert_eq!(partial_spoiler_start("<SPAN DATA-SPOILER='TRUE' x"), Some(0));
-        assert_eq!(partial_spoiler_start("<span data-spoiler=true more"), Some(0));
+        assert_eq!(
+            partial_spoiler_start("Before <span data-spoiler=\"true\" private text"),
+            Some(7)
+        );
+        assert_eq!(
+            partial_spoiler_start("x <span class=x data-spoiler=\"true>private"),
+            Some(2)
+        );
+        assert_eq!(
+            partial_spoiler_start("<SPAN DATA-SPOILER='TRUE' x"),
+            Some(0)
+        );
+        assert_eq!(
+            partial_spoiler_start("<span data-spoiler=true more"),
+            Some(0)
+        );
         assert_eq!(partial_spoiler_start("<span data-spoiler=true <b>"), None);
-        assert_eq!(partial_spoiler_start("<span data-spoiler=\"true\""), Some(0));
+        assert_eq!(
+            partial_spoiler_start("<span data-spoiler=\"true\""),
+            Some(0)
+        );
         assert_eq!(partial_spoiler_start("<span xdata-spoiler=true"), None);
-        assert_eq!(partial_spoiler_start("<span data-spoiler=\"false\" x"), None);
+        assert_eq!(
+            partial_spoiler_start("<span data-spoiler=\"false\" x"),
+            None
+        );
         assert_eq!(partial_spoiler_start("<spandata-spoiler=true"), None);
-        assert_eq!(partial_spoiler_start("é <span\n data-spoiler = 'true' z"), Some(3));
+        assert_eq!(partial_spoiler_start("<span data-spoiler x"), None);
+        assert_eq!(next_tag("<span x", 0), None);
+        assert_eq!(
+            partial_spoiler_start("é <span\n data-spoiler = 'true' z"),
+            Some(3)
+        );
     }
 
     #[test]
     fn signal_fallback_fails_closed() {
-        let valid = signal_spoiler_fallback("a <span data-spoiler=\"true\"><strong>x</strong></span> b").unwrap();
-        assert_eq!(valid, Fallback { plain: "a [spoiler omitted] b".into(), malformed: false });
-        let crossing = signal_spoiler_fallback("<strong><span data-spoiler=\"true\">p</strong> t</span> z").unwrap();
-        assert_eq!(crossing, Fallback { plain: "[spoiler omitted] z".into(), malformed: true });
+        let valid =
+            signal_spoiler_fallback("a <span data-spoiler=\"true\"><strong>x</strong></span> b")
+                .unwrap();
+        assert_eq!(
+            valid,
+            Fallback {
+                plain: "a [spoiler omitted] b".into(),
+                malformed: false
+            }
+        );
+        let crossing =
+            signal_spoiler_fallback("<strong><span data-spoiler=\"true\">p</strong> t</span> z")
+                .unwrap();
+        assert_eq!(
+            crossing,
+            Fallback {
+                plain: "[spoiler omitted] z".into(),
+                malformed: true
+            }
+        );
         let open = signal_spoiler_fallback("a <span data-spoiler=\"true\">p<br>q").unwrap();
-        assert_eq!(open, Fallback { plain: "a [spoiler omitted]".into(), malformed: true });
+        assert_eq!(
+            open,
+            Fallback {
+                plain: "a [spoiler omitted]".into(),
+                malformed: true
+            }
+        );
         assert_eq!(signal_spoiler_fallback("<span>x</span>"), None);
         assert_eq!(next_tag("<sup><s x>", 0), Some((5, 10, false, "s")));
     }
 
     #[test]
     fn resolves_native_and_placeholder_regions() {
-        let stream = format!("a {OPEN_SPOILER}x{OPEN_SPAN}y{CLOSE_SPAN}{CLOSE_SPAN} b {OPEN_SPAN}c{CLOSE_SPAN}");
-        assert_eq!(resolve(&stream, Surface::Discord, true).text, "a ||xy|| b c");
+        let stream = format!(
+            "a {OPEN_SPOILER}x{OPEN_SPAN}y{CLOSE_SPAN}{CLOSE_SPAN} b {OPEN_SPAN}c{CLOSE_SPAN}"
+        );
+        assert_eq!(
+            resolve(&stream, Surface::Discord, true).text,
+            "a ||xy|| b c"
+        );
         assert_eq!(resolve(&stream, Surface::Reddit, true).text, "a >!xy!< b c");
-        assert_eq!(resolve(&stream, Surface::Plain, true).text, "a [spoiler omitted] b c");
+        assert_eq!(
+            resolve(&stream, Surface::Plain, true).text,
+            "a [spoiler omitted] b c"
+        );
         let tg = format!("<strong>a {OPEN_SPOILER}b</strong> <a href=\"u\">c{CLOSE_SPAN}d</a>");
-        assert_eq!(resolve(&tg, Surface::TelegramHtml, true).text, "<strong>a [spoiler omitted]</strong><a>d</a>");
-        let rtf = format!("{{\\b a}} {OPEN_SPOILER}{{\\field{{\\*\\fldinst HYPERLINK \"u\"}}{{\\fldrslt la{CLOSE_SPAN}bel}}}}");
-        assert_eq!(resolve(&rtf, Surface::Rtf, true).text, "{\\b a} [spoiler omitted]{\\field{\\fldrslt bel}}");
+        assert_eq!(
+            resolve(&tg, Surface::TelegramHtml, true).text,
+            "<strong>a [spoiler omitted]</strong><a>d</a>"
+        );
+        let rtf = format!(
+            "{{\\b a}} {OPEN_SPOILER}{{\\field{{\\*\\fldinst HYPERLINK \"u\"}}{{\\fldrslt la{CLOSE_SPAN}bel}}}}"
+        );
+        assert_eq!(
+            resolve(&rtf, Surface::Rtf, true).text,
+            "{\\b a} [spoiler omitted]{\\field{\\fldrslt bel}}"
+        );
         let crossing = format!("Before **{OPEN_SPOILER}private** text{CLOSE_SPAN}");
-        assert_eq!(resolve(&crossing, Surface::Discord, false).text, "Before **[spoiler omitted]**");
+        assert_eq!(
+            resolve(&crossing, Surface::Discord, false).text,
+            "Before **[spoiler omitted]**"
+        );
         assert_eq!(markdown_balance("a \\* ~~b~~ _c *d"), "*_");
         let unclosed = format!("a {OPEN_SPOILER}secret\n\nmore");
         let resolved = resolve(&unclosed, Surface::Discord, true);
-        assert_eq!((resolved.text.as_str(), resolved.omitted), ("a [spoiler omitted]", 1));
+        assert_eq!(
+            (resolved.text.as_str(), resolved.omitted),
+            ("a [spoiler omitted]", 1)
+        );
         let fenced = format!("```\n{OPEN_SPOILER}x{CLOSE_SPAN}\n```");
-        assert_eq!(resolve(&fenced, Surface::Discord, true).text, "```\n[spoiler omitted]\n```");
-        assert_eq!(resolve(&format!("{OPEN_SPOILER}a||b{CLOSE_SPAN}"), Surface::Discord, true).omitted, 1);
-        assert_eq!(resolve(&format!("{OPEN_SPOILER}a!<b{CLOSE_SPAN}"), Surface::Reddit, true).omitted, 1);
-        assert_eq!(resolve(&format!("{OPEN_SPOILER}<b{CLOSE_SPAN}"), Surface::Reddit, true).omitted, 1);
-        assert_eq!(resolve(&format!("{OPEN_SPOILER}a|{CLOSE_SPAN}"), Surface::Discord, true).omitted, 1);
-        assert_eq!(resolve(&format!("{OPEN_SPOILER}|a{CLOSE_SPAN}"), Surface::Discord, true).omitted, 1);
-        assert_eq!(resolve(&format!("{OPEN_SPOILER}x{CLOSE_SPAN}"), Surface::Discord, false).text, PLACEHOLDER);
+        assert_eq!(
+            resolve(&fenced, Surface::Discord, true).text,
+            "```\n[spoiler omitted]\n```"
+        );
+        assert_eq!(
+            resolve(
+                &format!("{OPEN_SPOILER}a||b{CLOSE_SPAN}"),
+                Surface::Discord,
+                true
+            )
+            .omitted,
+            1
+        );
+        assert_eq!(
+            resolve(
+                &format!("{OPEN_SPOILER}a!<b{CLOSE_SPAN}"),
+                Surface::Reddit,
+                true
+            )
+            .omitted,
+            1
+        );
+        assert_eq!(
+            resolve(
+                &format!("{OPEN_SPOILER}<b{CLOSE_SPAN}"),
+                Surface::Reddit,
+                true
+            )
+            .omitted,
+            1
+        );
+        assert_eq!(
+            resolve(
+                &format!("{OPEN_SPOILER}a|{CLOSE_SPAN}"),
+                Surface::Discord,
+                true
+            )
+            .omitted,
+            1
+        );
+        assert_eq!(
+            resolve(
+                &format!("{OPEN_SPOILER}|a{CLOSE_SPAN}"),
+                Surface::Discord,
+                true
+            )
+            .omitted,
+            1
+        );
+        assert_eq!(
+            resolve(
+                &format!("{OPEN_SPOILER}x{CLOSE_SPAN}"),
+                Surface::Discord,
+                false
+            )
+            .text,
+            PLACEHOLDER
+        );
         assert_eq!(neutralize("a\u{FDD0}b"), "a\u{FFFD}b");
     }
 }

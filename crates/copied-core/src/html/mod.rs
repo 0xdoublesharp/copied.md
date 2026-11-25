@@ -31,24 +31,34 @@ fn destination_style(destination: Destination, tag: &str, improved: bool) -> Opt
         return match (destination, tag) {
             (Destination::Teams, "pre") => Some("font-family: monospace; white-space: pre-wrap;"),
             (Destination::Teams, "code") => Some("font-family: monospace;"),
-            (Destination::Word, "pre") => Some("font-family: Consolas, monospace; white-space: pre;"),
+            (Destination::Word, "pre") => {
+                Some("font-family: Consolas, monospace; white-space: pre;")
+            }
             (Destination::Word, "code") => Some("font-family: Consolas, monospace;"),
             (_, "blockquote") => None,
             _ => destination_style(destination, tag, true),
         };
     }
     match (destination, tag) {
-        (Destination::Teams, "pre") => Some("font-family: monospace; white-space: pre-wrap; background-color: #f4f4f4;"),
+        (Destination::Teams, "pre") => {
+            Some("font-family: monospace; white-space: pre-wrap; background-color: #f4f4f4;")
+        }
         (Destination::Teams, "code") => Some("font-family: monospace; background-color: #f4f4f4;"),
         (Destination::Teams, "table") => Some("border-collapse: collapse;"),
-        (Destination::Teams, "th") => Some("border: 1px solid #999; padding: 4px 8px; text-align: left;"),
-        (Destination::Teams, "td") => Some("border: 1px solid #999; padding: 4px 8px;"),
-        (Destination::Word, "pre") => Some("font-family: Consolas, monospace; white-space: pre; background-color: #f4f4f4;"),
-        (Destination::Word, "code") => Some("font-family: Consolas, monospace; background-color: #f4f4f4;"),
-        (Destination::Word, "table") => Some("border-collapse: collapse; border: 1px solid #999;"),
-        (Destination::Word, "th") => {
-            Some("border: 1px solid #999; background-color: #eaeaea; padding: 4pt 6pt; text-align: left;")
+        (Destination::Teams, "th") => {
+            Some("border: 1px solid #999; padding: 4px 8px; text-align: left;")
         }
+        (Destination::Teams, "td") => Some("border: 1px solid #999; padding: 4px 8px;"),
+        (Destination::Word, "pre") => {
+            Some("font-family: Consolas, monospace; white-space: pre; background-color: #f4f4f4;")
+        }
+        (Destination::Word, "code") => {
+            Some("font-family: Consolas, monospace; background-color: #f4f4f4;")
+        }
+        (Destination::Word, "table") => Some("border-collapse: collapse; border: 1px solid #999;"),
+        (Destination::Word, "th") => Some(
+            "border: 1px solid #999; background-color: #eaeaea; padding: 4pt 6pt; text-align: left;",
+        ),
         (Destination::Word, "td") => Some("border: 1px solid #999; padding: 4pt 6pt;"),
         (Destination::Teams | Destination::Word, "blockquote") => {
             Some("border-left: 3px solid #ccc; margin: 8px 0; padding-left: 12px; color: #555;")
@@ -72,7 +82,11 @@ fn tables_to_code(nodes: &mut [HNode], improved: bool) {
     for node in nodes {
         if let HNode::Element(element) = node {
             if element.name == "table" {
-                let text = if improved { tables::aligned_table_text(element) } else { tables::table_as_text(element) };
+                let text = if improved {
+                    tables::aligned_table_text(element)
+                } else {
+                    tables::table_as_text(element)
+                };
                 let code = HElement::new("code", vec![], vec![HNode::Text(text)]);
                 *element = HElement::new("pre", vec![], vec![HNode::Element(code)]);
             } else {
@@ -88,10 +102,18 @@ fn checkboxes_to_glyphs(nodes: &mut Vec<HNode>) {
     while index < nodes.len() {
         if let HNode::Element(element) = &mut nodes[index] {
             if element.name == "input" {
-                let glyph = if element.attr("checked").is_some() { "☑" } else { "☐" };
+                let glyph = if element.attr("checked").is_some() {
+                    "☑"
+                } else {
+                    "☐"
+                };
                 let spaced = matches!(nodes.get(index + 1), Some(HNode::Text(t)) if t.starts_with(' '))
                     || index + 1 == nodes.len();
-                let value = if spaced { glyph.to_owned() } else { format!("{glyph} ") };
+                let value = if spaced {
+                    glyph.to_owned()
+                } else {
+                    format!("{glyph} ")
+                };
                 nodes[index] = HNode::Text(value);
                 // Merge adjacent text so the serializer sees one run.
                 if let Some(HNode::Text(next)) = nodes.get(index + 1).cloned() {
@@ -101,7 +123,8 @@ fn checkboxes_to_glyphs(nodes: &mut Vec<HNode>) {
                     }
                 }
                 if index > 0
-                    && let (HNode::Text(_), HNode::Text(current)) = (&nodes[index - 1], nodes[index].clone())
+                    && let (HNode::Text(_), HNode::Text(current)) =
+                        (&nodes[index - 1], nodes[index].clone())
                 {
                     nodes.remove(index);
                     index -= 1;
@@ -125,7 +148,13 @@ pub(crate) fn render_rich_html(
     improved: bool,
 ) -> RichHtml {
     let fragment = to_hast::to_html_tree(children);
-    render_safe(fragment.children, source_url, destination, improved, fragment.depth_limited)
+    render_safe(
+        fragment.children,
+        source_url,
+        destination,
+        improved,
+        fragment.depth_limited,
+    )
 }
 
 fn render_safe(
@@ -151,7 +180,10 @@ fn render_safe(
     if improved && destination.is_some() {
         checkboxes_to_glyphs(&mut clean);
     }
-    RichHtml { html: serialize::serialize(&clean), depth_limited }
+    RichHtml {
+        html: serialize::serialize(&clean),
+        depth_limited,
+    }
 }
 
 #[cfg(test)]
@@ -162,12 +194,19 @@ mod tests {
     fn checkbox_glyphs_do_not_double_spaces() {
         let mut nodes = vec![
             HNode::Text("a".into()),
-            HNode::Element(HElement::new("input", vec![("checked".into(), String::new())], vec![])),
+            HNode::Element(HElement::new(
+                "input",
+                vec![("checked".into(), String::new())],
+                vec![],
+            )),
             HNode::Text(" Done".into()),
         ];
         checkboxes_to_glyphs(&mut nodes);
         assert_eq!(nodes, vec![HNode::Text("a☑ Done".into())]);
-        let mut lone = vec![HNode::Element(HElement::new("input", vec![], vec![])), HNode::Element(HElement::new("b", vec![], vec![]))];
+        let mut lone = vec![
+            HNode::Element(HElement::new("input", vec![], vec![])),
+            HNode::Element(HElement::new("b", vec![], vec![])),
+        ];
         checkboxes_to_glyphs(&mut lone);
         assert_eq!(lone[0], HNode::Text("☐ ".into()));
     }

@@ -23,7 +23,8 @@ pub fn corpus() -> (String, Vec<GoldenRun>) {
         let name = case["name"].as_str().expect("name").to_owned();
         let markdown = case["markdown"].as_str().expect("markdown").to_owned();
         for run in case["runs"].as_array().expect("runs") {
-            let options: ConversionOptions = serde_json::from_value(run["options"].clone()).expect("options");
+            let options: ConversionOptions =
+                serde_json::from_value(run["options"].clone()).expect("options");
             let results = run["results"]
                 .as_object()
                 .expect("results")
@@ -58,8 +59,14 @@ pub struct Divergence {
 }
 
 fn parse_string(raw: &str, line: usize) -> String {
-    let inner = raw.strip_prefix('"').and_then(|r| r.strip_suffix('"')).unwrap_or_else(|| panic!("line {line}: expected a string"));
-    assert!(!inner.contains('\\'), "line {line}: escapes are not supported");
+    let inner = raw
+        .strip_prefix('"')
+        .and_then(|r| r.strip_suffix('"'))
+        .unwrap_or_else(|| panic!("line {line}: expected a string"));
+    assert!(
+        !inner.contains('\\'),
+        "line {line}: escapes are not supported"
+    );
     inner.to_owned()
 }
 
@@ -77,13 +84,19 @@ pub fn divergences() -> Vec<Divergence> {
             entries.push(Divergence::default());
             continue;
         }
-        let (key, value) = line.split_once('=').unwrap_or_else(|| panic!("line {}: expected key = value", number + 1));
+        let (key, value) = line
+            .split_once('=')
+            .unwrap_or_else(|| panic!("line {}: expected key = value", number + 1));
         let (key, value) = (key.trim(), value.trim());
-        let entry = entries.last_mut().unwrap_or_else(|| panic!("line {}: key outside [[divergence]]", number + 1));
+        let entry = entries
+            .last_mut()
+            .unwrap_or_else(|| panic!("line {}: key outside [[divergence]]", number + 1));
         let text = if value == "\"\"\"" {
             let mut collected = Vec::new();
             loop {
-                let (_, next) = lines.next().unwrap_or_else(|| panic!("line {}: unterminated string", number + 1));
+                let (_, next) = lines
+                    .next()
+                    .unwrap_or_else(|| panic!("line {}: unterminated string", number + 1));
                 if next.trim() == "\"\"\"" {
                     break;
                 }
@@ -96,8 +109,16 @@ pub fn divergences() -> Vec<Divergence> {
             None
         };
         let list = || -> Vec<String> {
-            let inner = value.strip_prefix('[').and_then(|v| v.strip_suffix(']')).unwrap_or_else(|| panic!("line {}: expected an array", number + 1));
-            inner.split(',').map(str::trim).filter(|s| !s.is_empty()).map(|s| parse_string(s, number + 1)).collect()
+            let inner = value
+                .strip_prefix('[')
+                .and_then(|v| v.strip_suffix(']'))
+                .unwrap_or_else(|| panic!("line {}: expected an array", number + 1));
+            inner
+                .split(',')
+                .map(str::trim)
+                .filter(|s| !s.is_empty())
+                .map(|s| parse_string(s, number + 1))
+                .collect()
         };
         match key {
             "id" => entry.id = text.expect("id is a string"),
@@ -110,17 +131,35 @@ pub fn divergences() -> Vec<Divergence> {
         }
     }
     for entry in &entries {
-        assert!(!entry.id.is_empty() && !entry.title.is_empty() && entry.rationale.len() > 40, "incomplete entry {entry:?}");
-        assert!(!entry.targets.is_empty() && !entry.fields.is_empty() && !entry.cases.is_empty(), "empty scope in {}", entry.id);
+        assert!(
+            !entry.id.is_empty() && !entry.title.is_empty() && entry.rationale.len() > 40,
+            "incomplete entry {entry:?}"
+        );
+        assert!(
+            !entry.targets.is_empty() && !entry.fields.is_empty() && !entry.cases.is_empty(),
+            "empty scope in {}",
+            entry.id
+        );
         for field in &entry.fields {
-            assert!(FIELDS.contains(&field.as_str()), "{}: unknown field {field}", entry.id);
+            assert!(
+                FIELDS.contains(&field.as_str()),
+                "{}: unknown field {field}",
+                entry.id
+            );
         }
     }
     entries
 }
 
 /// Comparable fields of a conversion result.
-pub const FIELDS: &[&str] = &["text/plain", "text/html", "text/rtf", "text/signal", "diagnostics", "metrics"];
+pub const FIELDS: &[&str] = &[
+    "text/plain",
+    "text/html",
+    "text/rtf",
+    "text/signal",
+    "diagnostics",
+    "metrics",
+];
 
 pub fn field(value: &Value, name: &str) -> Value {
     match name {

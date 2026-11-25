@@ -6,14 +6,6 @@
 
 use markdown::mdast;
 
-/// Reference style of a link or image reference.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum RefKind {
-    Shortcut,
-    Collapsed,
-    Full,
-}
-
 /// GFM table column alignment.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Align {
@@ -38,27 +30,71 @@ impl Align {
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) enum Node {
     Paragraph(Vec<Node>),
-    Heading { depth: u8, children: Vec<Node> },
+    Heading {
+        depth: u8,
+        children: Vec<Node>,
+    },
     ThematicBreak,
     Blockquote(Vec<Node>),
-    List { ordered: bool, start: Option<u32>, spread: bool, children: Vec<Node> },
-    ListItem { spread: bool, checked: Option<bool>, children: Vec<Node> },
+    List {
+        ordered: bool,
+        start: Option<u32>,
+        spread: bool,
+        children: Vec<Node>,
+    },
+    ListItem {
+        spread: bool,
+        checked: Option<bool>,
+        children: Vec<Node>,
+    },
     Html(String),
-    Code { value: String, lang: Option<String>, meta: Option<String> },
-    Definition { identifier: String, url: String, title: Option<String> },
+    Code {
+        value: String,
+        lang: Option<String>,
+        meta: Option<String>,
+    },
+    Definition {
+        identifier: String,
+        url: String,
+        title: Option<String>,
+    },
     Text(String),
     Emphasis(Vec<Node>),
     Strong(Vec<Node>),
     Delete(Vec<Node>),
     InlineCode(String),
     Break,
-    Link { url: String, title: Option<String>, children: Vec<Node> },
-    Image { url: String, title: Option<String>, alt: String },
-    LinkReference { identifier: String, label: Option<String>, kind: RefKind, children: Vec<Node> },
-    ImageReference { identifier: String, label: Option<String>, kind: RefKind, alt: String },
-    FootnoteDefinition { identifier: String, children: Vec<Node> },
-    FootnoteReference { identifier: String, label: Option<String> },
-    Table { align: Vec<Align>, children: Vec<Node> },
+    Link {
+        url: String,
+        title: Option<String>,
+        children: Vec<Node>,
+    },
+    Image {
+        url: String,
+        title: Option<String>,
+        alt: String,
+    },
+    /// Resolved into `Link` (or its children) by the document pass.
+    LinkReference {
+        identifier: String,
+        children: Vec<Node>,
+    },
+    /// Resolved into `Image` (or text) by the document pass.
+    ImageReference {
+        identifier: String,
+        alt: String,
+    },
+    FootnoteDefinition {
+        identifier: String,
+        children: Vec<Node>,
+    },
+    FootnoteReference {
+        identifier: String,
+    },
+    Table {
+        align: Vec<Align>,
+        children: Vec<Node>,
+    },
     TableRow(Vec<Node>),
     TableCell(Vec<Node>),
 }
@@ -151,29 +187,23 @@ fn item_spread(item: &mdast::ListItem) -> bool {
         .iter()
         .map(|c| Some((c.position()?.start.line, content_end_line(c)?)))
         .collect();
-    match lines {
-        Some(lines) => lines.windows(2).any(|pair| pair[1].0 > pair[0].1 + 1),
-        None => item.spread,
-    }
+    lines.map_or(item.spread, |lines| {
+        lines.windows(2).any(|pair| pair[1].0 > pair[0].1 + 1)
+    })
 }
 
 fn convert_all(nodes: &[mdast::Node]) -> Vec<Node> {
     nodes.iter().filter_map(convert).collect()
 }
 
-fn ref_kind(kind: mdast::ReferenceKind) -> RefKind {
-    match kind {
-        mdast::ReferenceKind::Shortcut => RefKind::Shortcut,
-        mdast::ReferenceKind::Collapsed => RefKind::Collapsed,
-        mdast::ReferenceKind::Full => RefKind::Full,
-    }
-}
-
 /// Converts a `markdown-rs` node into the internal representation.
 pub(crate) fn convert(node: &mdast::Node) -> Option<Node> {
     Some(match node {
         mdast::Node::Paragraph(n) => Node::Paragraph(convert_all(&n.children)),
-        mdast::Node::Heading(n) => Node::Heading { depth: n.depth, children: convert_all(&n.children) },
+        mdast::Node::Heading(n) => Node::Heading {
+            depth: n.depth,
+            children: convert_all(&n.children),
+        },
         mdast::Node::ThematicBreak(_) => Node::ThematicBreak,
         mdast::Node::Blockquote(n) => Node::Blockquote(convert_all(&n.children)),
         mdast::Node::List(n) => Node::List {
@@ -188,7 +218,11 @@ pub(crate) fn convert(node: &mdast::Node) -> Option<Node> {
             children: convert_all(&n.children),
         },
         mdast::Node::Html(n) => Node::Html(n.value.clone()),
-        mdast::Node::Code(n) => Node::Code { value: n.value.clone(), lang: n.lang.clone(), meta: n.meta.clone() },
+        mdast::Node::Code(n) => Node::Code {
+            value: n.value.clone(),
+            lang: n.lang.clone(),
+            meta: n.meta.clone(),
+        },
         mdast::Node::Definition(n) => Node::Definition {
             identifier: n.identifier.clone(),
             url: n.url.clone(),
@@ -200,18 +234,22 @@ pub(crate) fn convert(node: &mdast::Node) -> Option<Node> {
         mdast::Node::Delete(n) => Node::Delete(convert_all(&n.children)),
         mdast::Node::InlineCode(n) => Node::InlineCode(n.value.clone()),
         mdast::Node::Break(_) => Node::Break,
-        mdast::Node::Link(n) => Node::Link { url: n.url.clone(), title: n.title.clone(), children: convert_all(&n.children) },
-        mdast::Node::Image(n) => Node::Image { url: n.url.clone(), title: n.title.clone(), alt: n.alt.clone() },
+        mdast::Node::Link(n) => Node::Link {
+            url: n.url.clone(),
+            title: n.title.clone(),
+            children: convert_all(&n.children),
+        },
+        mdast::Node::Image(n) => Node::Image {
+            url: n.url.clone(),
+            title: n.title.clone(),
+            alt: n.alt.clone(),
+        },
         mdast::Node::LinkReference(n) => Node::LinkReference {
             identifier: n.identifier.clone(),
-            label: n.label.clone(),
-            kind: ref_kind(n.reference_kind),
             children: convert_all(&n.children),
         },
         mdast::Node::ImageReference(n) => Node::ImageReference {
             identifier: n.identifier.clone(),
-            label: n.label.clone(),
-            kind: ref_kind(n.reference_kind),
             alt: n.alt.clone(),
         },
         mdast::Node::FootnoteDefinition(n) => Node::FootnoteDefinition {
@@ -220,7 +258,6 @@ pub(crate) fn convert(node: &mdast::Node) -> Option<Node> {
         },
         mdast::Node::FootnoteReference(n) => Node::FootnoteReference {
             identifier: n.identifier.clone(),
-            label: n.label.clone(),
         },
         mdast::Node::Table(n) => Node::Table {
             align: n
@@ -243,8 +280,38 @@ pub(crate) fn convert(node: &mdast::Node) -> Option<Node> {
 
 /// Parses a document root.
 pub(crate) fn root_children(node: &mdast::Node) -> Vec<Node> {
-    match node {
-        mdast::Node::Root(root) => convert_all(&root.children),
-        other => convert(other).into_iter().collect(),
+    node.children()
+        .map(|children| convert_all(children))
+        .unwrap_or_default()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn helpers_cover_every_variant() {
+        assert_eq!(
+            [Align::None, Align::Left, Align::Right, Align::Center].map(Align::as_str),
+            [None, Some("left"), Some("right"), Some("center")]
+        );
+        let mut reference = Node::LinkReference {
+            identifier: "a".into(),
+            children: vec![Node::Break],
+        };
+        assert_eq!(reference.children_mut().map(|c| c.len()), Some(1));
+        assert_eq!(Node::Break.children(), None);
+        let yaml = mdast::Node::Yaml(mdast::Yaml {
+            value: String::new(),
+            position: None,
+        });
+        assert_eq!(convert(&yaml), None);
+        assert_eq!(root_children(&yaml), Vec::new());
+        assert_eq!(
+            depth(&[Node::Paragraph(vec![Node::Emphasis(vec![Node::Text(
+                "x".into()
+            )])])]),
+            3
+        );
     }
 }
