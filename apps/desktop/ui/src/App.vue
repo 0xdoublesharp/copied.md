@@ -2,6 +2,7 @@
 import { computed, onMounted, onUnmounted, ref, shallowRef } from 'vue';
 import FormatGrid from './components/FormatGrid.vue';
 import SettingsDrawer from './components/SettingsDrawer.vue';
+import WelcomePanel from './components/WelcomePanel.vue';
 import {
   desktopApi,
   type CopyTarget,
@@ -105,9 +106,18 @@ function closeSettings() {
 
 <template>
   <main class="desktop-shell">
+    <div class="window-drag-region" data-tauri-drag-region aria-hidden="true"></div>
     <p v-if="error" class="warning shell-error" role="alert">{{ error }}</p>
+    <WelcomePanel
+      v-if="state?.panel === 'welcome'"
+      :key="opening"
+      :state="state"
+      :api="api"
+      @config="state = { ...state, config: $event }"
+      @login="state = { ...state, loginItemStatus: $event }"
+    />
     <SettingsDrawer
-      v-if="state?.panel && settings"
+      v-else-if="state?.panel && settings"
       :key="opening"
       :state="state"
       :api="api"
@@ -120,8 +130,12 @@ function closeSettings() {
     <FormatGrid
       v-else-if="state?.currentPicker"
       :request="state.currentPicker"
+      :api="api"
       :targets="targets"
       :columns="state.config.pickerColumns"
+      :active-app="state.activeApp"
+      :pinned-formats="state.config.pinnedFormats"
+      :auto-detect-app-format="state.config.autoDetectAppFormat"
       :busy="pending"
       @choose="choose"
       @dismiss="dismiss"

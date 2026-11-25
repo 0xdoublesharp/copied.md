@@ -90,7 +90,7 @@ fn with_desktop<T>(
         if let Err(error) = menu.refresh(&state) {
             eprintln!("copied.md: {error}");
         }
-        menu.present(app, feedback);
+        menu.present(app, &state, feedback);
     }
     result
 }
@@ -99,6 +99,7 @@ fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
     #[cfg(target_os = "macos")]
     app.set_activation_policy(tauri::ActivationPolicy::Accessory);
     let (path, config) = config::open_config()?;
+    let has_launched = config.has_launched;
     let mut capabilities = copied_platform::detect_capabilities();
     let handle = app.handle().clone();
     let shortcut = DesktopShortcut::new(capabilities.global_shortcuts, move || {
@@ -125,6 +126,13 @@ fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
     });
     app.manage(TrayMenu::install(app.handle())?);
     with_desktop(app.handle(), |_| Ok(()))?;
+    if !has_launched {
+        let handle = app.handle().clone();
+        app.run_on_main_thread(move || {
+            let result = with_desktop(&handle, Desktop::show_first_launch_welcome);
+            tray::present_operation_error(&handle, result);
+        })?;
+    }
     Ok(())
 }
 
@@ -137,6 +145,7 @@ pub fn run() -> Result<(), DesktopError> {
             commands::get_desktop_state,
             commands::picker_choose,
             commands::picker_dismiss,
+            commands::copy_sample_markdown,
             commands::close_panel,
             commands::update_config,
             commands::set_app_pin,

@@ -16,11 +16,10 @@ fn load_or_import(path: &Path) -> Result<ConfigV2, DesktopError> {
         return Ok(load_config(path)?);
     }
     #[cfg(target_os = "macos")]
-    let mut config = legacy_macos::import();
+    let config = legacy_macos::import();
     #[cfg(not(target_os = "macos"))]
-    let mut config = ConfigV2::default();
+    let config = ConfigV2::default();
 
-    config.has_launched = true;
     save_config(path, &config)?;
     Ok(config)
 }

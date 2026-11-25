@@ -5,7 +5,7 @@ import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 export type CopyTarget = FormatIconId;
 export type Columns = 3 | 4 | 5;
 export type ShortcutMode = 'copy-and-pick' | 'picker' | 'copy-only';
-export type Panel = 'picker' | 'settings' | 'app-pin' | 'shortcut';
+export type Panel = 'picker' | 'settings' | 'app-pin' | 'shortcut' | 'welcome';
 export type LoginItemStatus = 'disabled' | 'enabled' | 'requires-approval' | 'unsupported';
 
 export interface ShortcutSpec {
@@ -50,6 +50,7 @@ export interface PickerOpenRequest {
   selected: CopyTarget;
   copied?: { target: CopyTarget; label: string; warning?: string };
   suggested?: CopyTarget;
+  sourcePreview?: string;
 }
 
 export interface DesktopState {
@@ -114,6 +115,8 @@ export function createDesktopApi(bridge: DesktopBridge = tauriBridge) {
     toggleShortcut: (enabled: boolean) => bridge.invoke<ConfigV2>('toggle_shortcut', { enabled }),
     toggleLogin: (enabled: boolean) =>
       bridge.invoke<LoginItemStatus>('toggle_login_item', { enabled }),
+    copySample: (markdown: string, target: CopyTarget) =>
+      bridge.invoke<void>('copy_sample_markdown', { markdown, target }),
     preview: (
       markdown: string,
       target: CopyTarget,

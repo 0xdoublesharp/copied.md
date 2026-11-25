@@ -17,7 +17,7 @@ import { captureShortcut, formatShortcut, SHORTCUT_HINT } from '../lib/shortcut'
 const props = defineProps<{
   state: DesktopState;
   api: DesktopApi;
-  panel: Panel;
+  panel: Exclude<Panel, 'welcome'>;
   backLabel: string;
 }>();
 const emit = defineEmits<{
@@ -40,6 +40,15 @@ const activeApp = computed(() =>
 );
 const appPin = computed(
   () => activeApp.value && props.state.config.pinnedFormats[activeApp.value.id],
+);
+const savedPins = computed(() =>
+  Object.entries(props.state.config.pinnedFormats)
+    .map(([id, target]) => ({
+      id,
+      name: activeApp.value?.id === id ? activeApp.value.name : id.split(':').at(-1) || id,
+      label: props.state.targets.find((definition) => definition.id === target)?.label ?? target,
+    }))
+    .sort((a, b) => a.name.localeCompare(b.name)),
 );
 const appPinSelect = ref<HTMLSelectElement>();
 const capture = ref<HTMLElement>();
@@ -252,6 +261,25 @@ onMounted(() => {
           app.
         </p>
         <p v-else>Focus an app and reopen Settings to override its format.</p>
+        <div v-if="savedPins.length" class="saved-pins">
+          <h2>Saved app overrides</h2>
+          <ul>
+            <li v-for="pin in savedPins" :key="pin.id">
+              <div class="saved-pin-label">
+                <span :title="pin.id">{{ pin.name }}</span>
+                <span>{{ pin.label }}</span>
+              </div>
+              <button
+                type="button"
+                class="button"
+                :aria-label="`Remove override for ${pin.name}`"
+                @click="saveConfig(() => api.setAppPin(pin.id, null))"
+              >
+                Remove
+              </button>
+            </li>
+          </ul>
+        </div>
       </fieldset>
 
       <fieldset v-if="panel !== 'app-pin'" :disabled="busy">

@@ -6,7 +6,8 @@ use std::{
     time::Duration,
 };
 
-use copied_config::{ConfigPatch, ShortcutCopyMode};
+use copied_config::{ConfigPatch, ShortcutCopyMode, resolve_shortcut_target};
+use copied_core::CopyTarget;
 use copied_platform::{LoginItemStatus, ShortcutCapability};
 use tauri::{
     AppHandle, Manager,
@@ -148,10 +149,16 @@ impl TrayMenu {
         Ok(())
     }
 
-    pub(crate) fn present(&self, app: &AppHandle, feedback: Vec<Feedback>) {
+    pub(crate) fn present(&self, app: &AppHandle, state: &DesktopState, feedback: Vec<Feedback>) {
         for event in feedback {
             match event {
-                Feedback::Copied(target) => self.flash(app, target.definition().label.as_ref()),
+                Feedback::Copied(target) => {
+                    let title = format!("Copied as {}", target.definition().label);
+                    self.flash(app, &title);
+                    if let Some(detail) = success_detail(state, target) {
+                        self.toast.show(app, ToastKind::Success, &title, &detail);
+                    }
+                }
                 Feedback::Warning(title, detail) => {
                     self.toast.show(app, ToastKind::Warning, &title, &detail);
                 }
@@ -163,12 +170,15 @@ impl TrayMenu {
         }
     }
 
-    fn flash(&self, app: &AppHandle, label: &str) {
+    fn flash(&self, app: &AppHandle, title: &str) {
         let Some(tray) = app.tray_by_id(TRAY_ID) else {
             return;
         };
         let _ = tray.set_icon(Image::from_bytes(COPIED_ICON).ok());
-        let _ = tray.set_tooltip(Some(format!("Copied as {label}")));
+        // On other platforms the native toast fallback owns the tooltip.
+        if cfg!(target_os = "macos") {
+            let _ = tray.set_tooltip(Some(title));
+        }
         let generation = Arc::clone(&self.flash_generation);
         let flashed = generation.fetch_add(1, Ordering::Relaxed) + 1;
         tauri::async_runtime::spawn_blocking(move || {
@@ -177,11 +187,26 @@ impl TrayMenu {
             let _ = app.run_on_main_thread(move || {
                 if generation.load(Ordering::Relaxed) == flashed {
                     let _ = tray.set_icon(Image::from_bytes(NORMAL_ICON).ok());
+                    #[cfg(target_os = "macos")]
                     let _ = tray.set_tooltip(Some("copied.md"));
                 }
             });
         });
     }
+}
+
+pub(crate) fn success_detail(state: &DesktopState, target: CopyTarget) -> Option<String> {
+    if state.current_picker.is_some() {
+        return None;
+    }
+    let destination = state.active_app.as_ref().filter(|app| {
+        let resolved = resolve_shortcut_target(&state.config, Some(&app.id));
+        resolved.from_pin && resolved.target == target
+    });
+    Some(destination.map_or_else(
+        || "Ready to paste".into(),
+        |app| format!("Ready to paste in {}", app.name),
+    ))
 }
 
 fn handle_menu(app: &AppHandle, id: &str) {

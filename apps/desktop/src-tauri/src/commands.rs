@@ -48,6 +48,15 @@ pub(crate) async fn picker_dismiss(app: AppHandle, op_id: u64) -> Result<(), Str
 }
 
 #[tauri::command]
+pub(crate) async fn copy_sample_markdown(
+    app: AppHandle,
+    markdown: String,
+    target: CopyTarget,
+) -> Result<(), String> {
+    on_main(app, move |desktop| desktop.copy_sample(&markdown, target)).await
+}
+
+#[tauri::command]
 pub(crate) async fn close_panel(app: AppHandle) -> Result<(), String> {
     on_main(app, |desktop| {
         if desktop.engine.picker.request.is_none() {

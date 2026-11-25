@@ -264,6 +264,125 @@ fn failed_picker_open_releases_the_engine_session() {
 }
 
 #[test]
+fn welcome_panel_opens_once_and_persists_first_launch() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("config.json");
+    let factory = CountingFactory::default();
+    factory.0.lock().unwrap().fail_next_show = true;
+    let mut desktop = desktop(
+        FakeBoard::default(),
+        path.clone(),
+        ConfigV2::default(),
+        factory.clone(),
+    );
+
+    assert!(desktop.show_first_launch_welcome().is_err());
+    assert!(!desktop.state().config.has_launched);
+    assert!(desktop.state().panel.is_none());
+
+    desktop.show_first_launch_welcome().unwrap();
+    let state = desktop.state();
+    assert_eq!(state.panel, Some(Panel::Welcome));
+    assert_eq!(serde_json::to_value(&state).unwrap()["panel"], "welcome");
+    assert!(state.current_picker.is_none());
+    assert!(load_config(&path).unwrap().has_launched);
+
+    desktop.close_panel().unwrap();
+    assert!(desktop.state().panel.is_none());
+    desktop.show_first_launch_welcome().unwrap();
+    assert!(desktop.state().panel.is_none());
+
+    let windows = factory.0.lock().unwrap();
+    assert_eq!(windows.webview_create_count, 1);
+    assert_eq!(windows.panels, [(Panel::Welcome, None)]);
+    assert_eq!(windows.hides, 2);
+}
+
+#[test]
+fn sample_copy_writes_converted_markdown_and_reports_warnings() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut board = FakeBoard::with_text("Old clipboard contents");
+    board.on_before_clear = Some(|board| {
+        board.external_copy("Intervening clipboard contents");
+    });
+    let mut desktop = desktop(
+        board,
+        dir.path().join("config.json"),
+        ConfigV2::default(),
+        CountingFactory::default(),
+    );
+    desktop.show_panel(Panel::Welcome).unwrap();
+
+    desktop.copy_sample(SOURCE, CopyTarget::PlainText).unwrap();
+    assert_eq!(desktop.engine.board.read_text().unwrap().text, "copied.md");
+    assert!(matches!(
+        desktop.engine.notifier.0.as_slice(),
+        [Feedback::Copied(CopyTarget::PlainText)]
+    ));
+
+    desktop.engine.notifier.0.clear();
+    let text = "x".repeat(281);
+    desktop
+        .copy_sample(&format!("**{text}**"), CopyTarget::Twitter)
+        .unwrap();
+    assert_eq!(desktop.engine.board.read_text().unwrap().text, text);
+    assert!(matches!(
+        desktop.engine.notifier.0.as_slice(),
+        [Feedback::Copied(CopyTarget::Twitter), Feedback::Warning(title, detail)]
+            if title == "Copied with a warning" && detail.contains("280 weighted characters")
+    ));
+    assert_eq!(desktop.state().panel, Some(Panel::Welcome));
+}
+
+#[test]
+fn success_toast_names_a_resolved_app_and_skips_copy_and_pick() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut desktop = desktop(
+        FakeBoard::with_text(SOURCE),
+        dir.path().join("config.json"),
+        ConfigV2::default(),
+        CountingFactory::default(),
+    );
+    let target = CopyTarget::PlainText;
+    assert_eq!(
+        tray::success_detail(&desktop.state(), target).as_deref(),
+        Some("Ready to paste")
+    );
+
+    desktop.set_pin(APP.into(), Some(target)).unwrap();
+    desktop.start(Some(ShortcutCopyMode::CopyOnly)).unwrap();
+    assert_eq!(
+        tray::success_detail(&desktop.state(), target).as_deref(),
+        Some("Ready to paste in Editor")
+    );
+
+    let mut state = desktop.state();
+    state.active_app = Some(ActiveApp {
+        id: "mac:bundle:com.hnc.Discord".into(),
+        name: "Discord".into(),
+    });
+    assert_eq!(
+        tray::success_detail(&state, CopyTarget::Discord).as_deref(),
+        Some("Ready to paste in Discord")
+    );
+
+    desktop.start(Some(ShortcutCopyMode::CopyAndPick)).unwrap();
+    let state = desktop.state();
+    assert_eq!(
+        state
+            .current_picker
+            .as_ref()
+            .unwrap()
+            .copied
+            .as_ref()
+            .unwrap()
+            .target,
+        target
+    );
+    assert!(tray::success_detail(&state, target).is_none());
+}
+
+#[test]
 fn settings_save_pin_mode_and_columns_atomically() {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("config.json");
