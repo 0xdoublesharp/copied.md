@@ -1,6 +1,6 @@
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
-import { fileURLToPath, pathToFileURL } from 'node:url';
+import { fileURLToPath } from 'node:url';
 import { createRequire } from 'node:module';
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -8,10 +8,7 @@ const repoRoot = resolve(here, '../..');
 const require = createRequire(resolve(repoRoot, 'apps/cli/package.json'));
 const esbuild = require('esbuild');
 
-const outBundle = resolve(
-  '/Volumes/Scratch/copied-md/tmp',
-  'copied-md-oracle.cjs',
-);
+const outBundle = resolve('/Volumes/Scratch/copied-md/tmp', 'copied-md-oracle.cjs');
 mkdirSync(dirname(outBundle), { recursive: true });
 await esbuild.build({
   entryPoints: [resolve(repoRoot, 'packages/converters/src/index.ts')],

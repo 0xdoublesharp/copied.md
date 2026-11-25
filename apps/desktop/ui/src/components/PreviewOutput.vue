@@ -52,7 +52,12 @@ const overLimit = computed(() => {
         >
           <svg viewBox="0 0 16 16" width="11" height="11" fill="none" aria-hidden="true">
             <circle cx="8" cy="8" r="6.25" stroke="currentColor" stroke-width="1.4" />
-            <path d="M8 7.2v3.6M8 5.2h.01" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
+            <path
+              d="M8 7.2v3.6M8 5.2h.01"
+              stroke="currentColor"
+              stroke-width="1.5"
+              stroke-linecap="round"
+            />
           </svg>
           <span class="preview-note-text">{{ warning.label }}</span>
         </span>

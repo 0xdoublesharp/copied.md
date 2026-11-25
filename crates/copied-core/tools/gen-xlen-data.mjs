@@ -3,6 +3,7 @@
 //
 // Usage (from the repository root, after `pnpm install`):
 //   node crates/copied-core/tools/gen-xlen-data.mjs node_modules/.pnpm > crates/copied-core/src/render/xlen_data.rs
+import { Buffer } from 'node:buffer';
 import { createRequire } from 'node:module';
 import { resolve } from 'node:path';
 
@@ -86,10 +87,14 @@ function enumerate(source) {
   return out;
 }
 
-const emoji = [...new Set(enumerate(load('twemoji-parser@11.0.2/node_modules/twemoji-parser/dist/lib/regex.js'))
-  .filter((units) => units.length > 0)
-  .map((units) => String.fromCharCode(...units))
-  .filter((s) => s.isWellFormed()))].sort((a, b) => Buffer.compare(Buffer.from(a), Buffer.from(b)));
+const emoji = [
+  ...new Set(
+    enumerate(load('twemoji-parser@11.0.2/node_modules/twemoji-parser/dist/lib/regex.js'))
+      .filter((units) => units.length > 0)
+      .map((units) => String.fromCharCode(...units))
+      .filter((s) => s.isWellFormed()),
+  ),
+].sort((a, b) => Buffer.compare(Buffer.from(a), Buffer.from(b)));
 
 const rust = (s) => JSON.stringify(s).replace(/\\u([0-9a-f]{4})/gi, (_, h) => '\\u{' + h + '}');
 const lines = [
@@ -99,7 +104,9 @@ const lines = [
   '/// Generic and country-code TLDs in twitter-text match order.',
   '#[rustfmt::skip]',
   'pub(crate) static TLDS: &[&str] = &[',
-  ...[...tlds(load(tt + 'validGTLD.js')), ...tlds(load(tt + 'validCCTLD.js'))].map((t) => '    ' + rust(t) + ','),
+  ...[...tlds(load(tt + 'validGTLD.js')), ...tlds(load(tt + 'validCCTLD.js'))].map(
+    (t) => '    ' + rust(t) + ',',
+  ),
   '];',
   '',
   '/// Every emoji sequence twemoji-parser recognizes, sorted by UTF-8 bytes for binary search.',

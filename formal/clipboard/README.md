@@ -19,12 +19,12 @@ Both platform models follow one copy operation and allow up to three external
 copies. TLC checks the modeled interleavings under each platform's clipboard
 contract.
 
-| Configuration | Expected result | What it checks |
-| --- | --- | --- |
-| `Clipboard.cfg` | Pass | Cancellation, conversion failure, and a stale revision detected before clear preserve the clipboard. If the post-clear revision check observes a newer copy, the write aborts and preserves it. |
-| `LegacyClipboard.cfg` | Counterexample to `NeverWriteAfterAnObservedChange` | With the post-clear guard disabled, an external copy can be observed and then overwritten. The Swift regression test reproduces this interleaving through the app's pasteboard write routine. |
-| `ExternalRace.cfg` | Counterexample to `NoExternalRace` | AppKit exposes separate revision reads, clear, and write calls. An external copy can land between a check and the next mutation. |
-| `WinBoard.cfg` | Pass, including `NoExternalRace` | `OpenClipboard` gives one writer exclusive access. The engine compares `GetClipboardSequenceNumber` while holding that lock and keeps it through clear and write. A stale comparison releases the lock with the external copy intact. |
+| Configuration         | Expected result                                     | What it checks                                                                                                                                                                                                                        |
+| --------------------- | --------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `Clipboard.cfg`       | Pass                                                | Cancellation, conversion failure, and a stale revision detected before clear preserve the clipboard. If the post-clear revision check observes a newer copy, the write aborts and preserves it.                                       |
+| `LegacyClipboard.cfg` | Counterexample to `NeverWriteAfterAnObservedChange` | With the post-clear guard disabled, an external copy can be observed and then overwritten. The Swift regression test reproduces this interleaving through the app's pasteboard write routine.                                         |
+| `ExternalRace.cfg`    | Counterexample to `NoExternalRace`                  | AppKit exposes separate revision reads, clear, and write calls. An external copy can land between a check and the next mutation.                                                                                                      |
+| `WinBoard.cfg`        | Pass, including `NoExternalRace`                    | `OpenClipboard` gives one writer exclusive access. The engine compares `GetClipboardSequenceNumber` while holding that lock and keeps it through clear and write. A stale comparison releases the lock with the external copy intact. |
 
 ## Copy session
 

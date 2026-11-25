@@ -1,5 +1,11 @@
 pnpm-lock.yaml
+**/pnpm-lock.yaml
 **/.wxt/
 **/build/
 **/coverage/
 **/dist/
+apps/desktop/src-tauri/gen/
+formal/lean/vectors.json
+formal/lean/lake-manifest.json
+crates/copied-core/tests/golden/
+crates/copied-core/tests/parity/improved.json

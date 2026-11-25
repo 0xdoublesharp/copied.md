@@ -57,8 +57,7 @@ const selectedIndex = computed(() =>
 );
 const selectedTarget = computed(() => filteredTargets.value[selectedIndex.value]);
 const previewTarget = computed(
-  () =>
-    filteredTargets.value.find((target) => target.id === hovered.value) ?? selectedTarget.value,
+  () => filteredTargets.value.find((target) => target.id === hovered.value) ?? selectedTarget.value,
 );
 const isDone = computed(() => copied.value != null && selected.value === copied.value.target);
 
@@ -238,12 +237,7 @@ function handleKey(event: KeyboardEvent) {
         <h1>Copy Markdown As</h1>
         <p v-if="copied || copiedNotice" class="picker-subtitle">
           <span v-if="copied">Copied as {{ copied.label }}</span>
-          <span
-            v-if="copiedNotice"
-            class="picker-note"
-            role="status"
-            :title="copiedNotice.tooltip"
-          >
+          <span v-if="copiedNotice" class="picker-note" role="status" :title="copiedNotice.tooltip">
             {{ copied ? '· ' : '' }}{{ copiedNotice.label }}
           </span>
         </p>
