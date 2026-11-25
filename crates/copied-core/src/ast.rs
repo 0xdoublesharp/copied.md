@@ -130,6 +130,33 @@ pub(crate) fn depth(nodes: &[Node]) -> usize {
     max
 }
 
+/// Last content line of a node; lists and items in `markdown-rs` extend over
+/// trailing blank lines, so use their last child instead.
+fn content_end_line(node: &mdast::Node) -> Option<usize> {
+    match node {
+        mdast::Node::List(_) | mdast::Node::ListItem(_) | mdast::Node::Blockquote(_) => node
+            .children()
+            .and_then(|children| children.last())
+            .map_or_else(|| node.position().map(|p| p.end.line), content_end_line),
+        _ => node.position().map(|p| p.end.line),
+    }
+}
+
+/// `mdast-util-from-markdown` marks an item spread only when a blank line sits
+/// between two of its direct children; `markdown-rs` also counts trailing blank
+/// lines, so recompute it from positions.
+fn item_spread(item: &mdast::ListItem) -> bool {
+    let lines: Option<Vec<(usize, usize)>> = item
+        .children
+        .iter()
+        .map(|c| Some((c.position()?.start.line, content_end_line(c)?)))
+        .collect();
+    match lines {
+        Some(lines) => lines.windows(2).any(|pair| pair[1].0 > pair[0].1 + 1),
+        None => item.spread,
+    }
+}
+
 fn convert_all(nodes: &[mdast::Node]) -> Vec<Node> {
     nodes.iter().filter_map(convert).collect()
 }
@@ -156,7 +183,7 @@ pub(crate) fn convert(node: &mdast::Node) -> Option<Node> {
             children: convert_all(&n.children),
         },
         mdast::Node::ListItem(n) => Node::ListItem {
-            spread: n.spread,
+            spread: item_spread(n),
             checked: n.checked,
             children: convert_all(&n.children),
         },

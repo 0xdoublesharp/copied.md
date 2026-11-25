@@ -6,6 +6,7 @@ use crate::url::{has_scheme_prefix, js_trim, safe_url};
 use crate::{Diagnostic, DiagnosticCode, DiagnosticSeverity};
 use indexmap::IndexMap;
 use markdown::{ParseOptions, to_mdast};
+use std::borrow::Cow;
 use std::collections::HashMap;
 
 /// A parsed document with resolved links and its URL diagnostics.
@@ -28,7 +29,9 @@ fn limit_diagnostic(limit: limits::Limit) -> Diagnostic {
 pub(crate) fn read_markdown(markdown: &str, source_url: Option<&str>) -> Document {
     let limit = limits::check(markdown);
     let parsed = if limit.is_none() {
-        to_mdast(markdown, &ParseOptions::gfm()).ok().map(|tree| ast::root_children(&tree))
+        // micromark's preprocessing replaces U+0000 with U+FFFD.
+        let source = if markdown.contains('\0') { Cow::Owned(markdown.replace('\0', "\u{FFFD}")) } else { Cow::Borrowed(markdown) };
+        to_mdast(&source, &ParseOptions::gfm()).ok().map(|tree| ast::root_children(&tree))
     } else {
         None
     };

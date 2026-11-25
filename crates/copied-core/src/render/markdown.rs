@@ -652,7 +652,7 @@ impl Serializer {
                 self.exit();
                 indent_lines(&value, |line, _, blank| if blank { ">".to_owned() } else { format!("> {line}") })
             }
-            Node::List { ordered, children, .. } => self.list(node, *ordered, children, parent.is_some() || !self.stack.is_empty()),
+            Node::List { ordered, children, .. } => self.list(node, *ordered, children),
             Node::ListItem { .. } => self.list_item(node, parent),
             Node::Code { value, lang, meta } => self.code(value, lang.as_deref(), meta.as_deref()),
             Node::Html(value) => value.clone(),
@@ -831,12 +831,13 @@ impl Serializer {
         value
     }
 
-    fn list(&mut self, node: &Node, ordered: bool, items: &[Node], has_parent: bool) -> String {
+    fn list(&mut self, node: &Node, ordered: bool, items: &[Node]) -> String {
         self.enter("list");
         let bullet_current = self.bullet_current;
         let mut bullet = if ordered { '.' } else { '-' };
         let bullet_other = if ordered { ')' } else { '*' };
-        let mut use_other = has_parent && self.bullet_last_used == Some(bullet);
+        // Every list has a parent (root at least), so a repeated bullet switches.
+        let mut use_other = self.bullet_last_used == Some(bullet);
         if !ordered {
             let first_empty = matches!(items.first(), Some(Node::ListItem { children, .. }) if children.is_empty());
             let n = self.stack.len();
