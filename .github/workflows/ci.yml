@@ -5,6 +5,10 @@ on: [push, pull_request]
 permissions:
   contents: read
 
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: 0
+
 jobs:
   test:
     runs-on: ubuntu-latest
@@ -67,3 +71,254 @@ jobs:
 
       - name: macOS clipboard and runtime tests
         run: pnpm test:macos
+
+  rust:
+    name: rust (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      # Golden fixtures include Markdown files whose line endings are part of the input.
+      - name: Keep LF line endings
+        run: git config --global core.autocrlf false
+
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      # rustup reads rust-toolchain.toml and installs the pinned toolchain, components,
+      # and the wasm32-unknown-unknown target on first use.
+      - name: Install pinned toolchain
+        run: rustup toolchain install
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Format
+        run: cargo fmt --all -- --check
+
+      - name: Clippy
+        run: cargo clippy --workspace --all-targets --locked -- -D warnings
+
+      - name: Test
+        run: cargo test --workspace --locked
+
+      - name: copied-codec without std
+        run: cargo check -p copied-codec --no-default-features --locked
+
+      - name: copied-wasm for wasm32
+        run: cargo check --target wasm32-unknown-unknown -p copied-wasm --locked
+
+      - name: Install cargo-llvm-cov
+        if: matrix.os == 'ubuntu-latest'
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-llvm-cov
+
+      - name: Coverage
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          cargo llvm-cov --workspace --locked --no-report
+          cargo llvm-cov report --lcov --output-path lcov.info
+          cargo llvm-cov report --json --summary-only --output-path coverage-summary.json
+
+      # Line coverage per pure crate, summed over the files under crates/<name>/src.
+      - name: Coverage thresholds
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          python3 - <<'PY'
+          import json, os, sys
+          thresholds = {
+              "copied-codec": 100.0,
+              "copied-config": 100.0,
+              "copied-engine": 100.0,
+              "copied-core": 98.0,
+          }
+          root = os.getcwd()
+          totals = {name: [0, 0] for name in thresholds}
+          with open("coverage-summary.json") as f:
+              report = json.load(f)
+          for entry in report["data"][0]["files"]:
+              parts = os.path.relpath(entry["filename"], root).split(os.sep)
+              if len(parts) > 2 and parts[0] == "crates" and parts[1] in totals:
+                  lines = entry["summary"]["lines"]
+                  totals[parts[1]][0] += lines["covered"]
+                  totals[parts[1]][1] += lines["count"]
+          failed = False
+          for name, minimum in thresholds.items():
+              covered, count = totals[name]
+              if count == 0:
+                  print(f"{name}: no coverage data")
+                  failed = True
+                  continue
+              percent = 100.0 * covered / count
+              ok = covered == count if minimum >= 100.0 else percent >= minimum
+              print(f"{name}: {covered}/{count} lines = {percent:.2f}% (minimum {minimum:g}%) {'ok' if ok else 'FAIL'}")
+              failed |= not ok
+          sys.exit(1 if failed else 0)
+          PY
+
+  fuzz:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Install nightly
+        run: rustup toolchain install nightly --profile minimal
+
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-fuzz
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: fuzz
+
+      # Short smoke runs keep the harnesses compiling and catch shallow regressions.
+      # The corpus and any crash artifacts stay in the runner's temporary directory.
+      - name: Smoke-fuzz every target
+        working-directory: fuzz
+        run: |
+          set -eu
+          for target in $(cargo +nightly fuzz list); do
+            corpus="$RUNNER_TEMP/fuzz/corpus/$target"
+            artifacts="$RUNNER_TEMP/fuzz/artifacts/$target"
+            mkdir -p "$corpus" "$artifacts"
+            echo "::group::$target"
+            cargo +nightly fuzz run "$target" "$corpus" -- \
+              -max_total_time=20 -len_control=0 -print_final_stats=1 \
+              -artifact_prefix="$artifacts/"
+            echo "::endgroup::"
+          done
+
+  formal:
+    runs-on: ubuntu-latest
+    env:
+      TLA2TOOLS_VERSION: v1.7.4
+      TLA2TOOLS_SHA256: 936a262061c914694dfd669a543be24573c45d5aa0ff20a8b96b23d01e050e88
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - name: Download tla2tools.jar
+        run: |
+          set -eu
+          mkdir -p "$RUNNER_TEMP/tla"
+          curl -fsSL -o "$RUNNER_TEMP/tla/tla2tools.jar" \
+            "https://github.com/tlaplus/tlaplus/releases/download/$TLA2TOOLS_VERSION/tla2tools.jar"
+          echo "$TLA2TOOLS_SHA256  $RUNNER_TEMP/tla/tla2tools.jar" | sha256sum -c -
+
+      - name: TLC model checking
+        env:
+          COMPUTE_JOBS: 2
+        run: |
+          mkdir -p "$RUNNER_TEMP/formal"
+          TLA2TOOLS_JAR="$RUNNER_TEMP/tla/tla2tools.jar" \
+            COPIED_MD_FORMAL_OUT="$RUNNER_TEMP/formal" \
+            sh formal/clipboard/check.sh
+
+      - name: Install elan
+        run: |
+          set -eu
+          curl -fsSL https://raw.githubusercontent.com/leanprover/elan/master/elan-init.sh \
+            | sh -s -- -y --default-toolchain none
+          echo "$HOME/.elan/bin" >> "$GITHUB_PATH"
+
+      - uses: actions/cache@v6
+        with:
+          path: |
+            ~/.elan/toolchains
+            formal/lean/.lake
+          key: lean-${{ hashFiles('formal/lean/lean-toolchain', 'formal/lean/lake-manifest.json', 'formal/lean/**/*.lean') }}
+          restore-keys: lean-
+
+      - name: Lean build
+        working-directory: formal/lean
+        run: lake build
+
+      - name: Lean vectors match the checked-in copy
+        working-directory: formal/lean
+        run: |
+          lake exe vectors > "$RUNNER_TEMP/vectors.json"
+          diff -u vectors.json "$RUNNER_TEMP/vectors.json"
+
+      - name: No sorry or admit
+        run: |
+          if grep -rnw --include='*.lean' --exclude-dir=.lake -e sorry -e admit formal/lean; then
+            echo "::error::Lean sources contain sorry or admit"
+            exit 1
+          fi
+
+  desktop:
+    name: desktop (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, windows-latest, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        working-directory: apps/desktop
+    steps:
+      - name: Keep LF line endings
+        working-directory: .
+        run: git config --global core.autocrlf false
+
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Install Linux WebKitGTK and tray dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev \
+            libxdo-dev libssl-dev patchelf build-essential
+
+      - uses: pnpm/action-setup@v6
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: pnpm
+          cache-dependency-path: apps/desktop/ui/pnpm-lock.yaml
+
+      - name: Install pinned toolchain
+        run: rustup toolchain install
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: apps/desktop/src-tauri
+
+      # The UI has its own lockfile outside the pnpm workspace.
+      - name: Install UI dependencies
+        run: pnpm --dir ui --ignore-workspace install --frozen-lockfile
+
+      - name: UI typecheck
+        run: pnpm --dir ui typecheck
+
+      - name: UI tests
+        run: pnpm --dir ui test
+
+      # src-tauri embeds ui/dist (frontendDist), so build the UI before compiling Rust.
+      - name: UI build
+        run: pnpm --dir ui build
+
+      - name: Tauri format
+        run: cargo fmt --manifest-path src-tauri/Cargo.toml --check
+
+      - name: Tauri clippy
+        run: cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets --locked -- -D warnings
+
+      - name: Tauri tests
+        run: cargo test --manifest-path src-tauri/Cargo.toml --locked

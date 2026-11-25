@@ -1,0 +1,78 @@
+[package]
+name = "copied-fuzz"
+version = "0.0.0"
+edition = "2024"
+license = "MIT"
+publish = false
+
+[package.metadata]
+cargo-fuzz = true
+
+[workspace]
+members = ["."]
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+libfuzzer-sys = "0.4"
+arbitrary = { version = "1", features = ["derive"] }
+copied-codec = { path = "../crates/copied-codec" }
+copied-core = { path = "../crates/copied-core" }
+copied-config = { path = "../crates/copied-config" }
+html5ever = "0.27"
+markup5ever_rcdom = "0.3"
+serde_json = "1"
+url = "2"
+
+[profile.release]
+debug = 1
+
+[[bin]]
+name = "convert_all_targets"
+path = "fuzz_targets/convert_all_targets.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "safe_url"
+path = "fuzz_targets/safe_url.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "pickle_decode"
+path = "fuzz_targets/pickle_decode.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "cf_html_parse"
+path = "fuzz_targets/cf_html_parse.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "rtf_roundtrip"
+path = "fuzz_targets/rtf_roundtrip.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "config_migrate"
+path = "fuzz_targets/config_migrate.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "shortcut_parse"
+path = "fuzz_targets/shortcut_parse.rs"
+test = false
+doc = false
+bench = false
