@@ -51,16 +51,55 @@ pub fn preferred_format(
         .map_or(CopyTarget::RichText, |def| def.id)
 }
 
-/// Resolves the target for a shortcut invocation, honoring visible per-app pins without mutating `last_target`.
+/// Maps well-known destination app IDs across macOS, Windows, and Linux to their native format.
+pub fn detected_format_for_app(app_id: &str) -> Option<CopyTarget> {
+    let raw = app_id.rsplit(':').next().unwrap_or(app_id);
+    match raw.to_ascii_lowercase().as_str() {
+        "com.tinyspeck.slackmacgap" | "slack.exe" | "slack" => Some(CopyTarget::SlackPaste),
+        "com.hnc.discord"
+        | "com.hnc.discordptb"
+        | "com.hnc.discordcanary"
+        | "discord.exe"
+        | "discord" => Some(CopyTarget::Discord),
+        "ru.keepcoder.telegram"
+        | "org.telegram.desktop"
+        | "telegram.exe"
+        | "telegram-desktop"
+        | "telegramdesktop" => Some(CopyTarget::Telegram),
+        "org.whispersystems.signal-desktop" | "signal.exe" | "signal" => Some(CopyTarget::Signal),
+        "com.microsoft.teams2"
+        | "com.microsoft.teams"
+        | "ms-teams.exe"
+        | "teams.exe"
+        | "teams-for-linux" => Some(CopyTarget::Teams),
+        "com.microsoft.word" | "winword.exe" => Some(CopyTarget::Word),
+        "net.whatsapp.whatsapp" | "whatsapp.exe" | "whatsapp" => Some(CopyTarget::Whatsapp),
+        "com.apple.mobilesms" => Some(CopyTarget::Sms),
+        _ => None,
+    }
+}
+
+/// Resolves the target for a shortcut invocation, honoring visible per-app pins and optional
+/// destination auto-detection without mutating `last_target`.
 pub fn resolve_shortcut_target(config: &ConfigV2, app_id: Option<&str>) -> ResolvedTarget {
-    if let Some(id) = app_id
-        && let Some(&pinned) = config.pinned_formats.get(id)
-        && is_visible(&config.format_visibility, pinned.definition())
-    {
-        return ResolvedTarget {
-            target: pinned,
-            from_pin: true,
-        };
+    if let Some(id) = app_id {
+        if let Some(&pinned) = config.pinned_formats.get(id)
+            && is_visible(&config.format_visibility, pinned.definition())
+        {
+            return ResolvedTarget {
+                target: pinned,
+                from_pin: true,
+            };
+        }
+        if config.auto_detect_app_format
+            && let Some(detected) = detected_format_for_app(id)
+            && is_visible(&config.format_visibility, detected.definition())
+        {
+            return ResolvedTarget {
+                target: detected,
+                from_pin: true,
+            };
+        }
     }
     ResolvedTarget {
         target: preferred_format(&config.format_visibility, config.last_target),

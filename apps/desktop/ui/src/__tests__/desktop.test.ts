@@ -39,6 +39,7 @@ function fixture(): DesktopState {
       formatVisibility: {},
       pickerColumns: 4,
       pinnedFormats: {},
+      autoDetectAppFormat: true,
       hasLaunched: true,
     },
     targets,
@@ -258,11 +259,20 @@ describe('desktop settings', () => {
     expect(calls.some(([command]) => command === 'update_config')).toBe(false);
   });
 
-  it('sets and clears a format pin for the captured foreground application', async () => {
+  it('sets and clears a format pin and toggles auto-detection for the captured foreground application', async () => {
     const state = fixture();
     state.panel = 'app-pin';
     state.currentPicker = null;
     const { root, calls } = await mount(state);
+    const autoDetect = checkbox(
+      root,
+      'Auto-detect destination app (Slack, Signal, Telegram, Discord, Teams, Word, WhatsApp)',
+    );
+    expect(autoDetect.checked).toBe(true);
+    autoDetect.click();
+    await settle();
+    expect(calls.at(-1)).toEqual(['update_config', { patch: { autoDetectAppFormat: false } }]);
+    expect(autoDetect.checked).toBe(false);
     const input = root.querySelector('select')!;
     expect(root.textContent).toContain('Format for Editor');
     expect([...input.options].find((option) => option.value === 'teams')?.disabled).toBe(true);

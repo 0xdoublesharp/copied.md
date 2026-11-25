@@ -237,6 +237,115 @@ fn pins_override_recent_formats_while_visible_and_survive_hiding() {
 }
 
 #[test]
+fn auto_detect_maps_known_destinations_and_yields_to_pins_and_visibility() {
+    assert_eq!(
+        detected_format_for_app("mac:bundle:com.tinyspeck.slackmacgap"),
+        Some(CopyTarget::SlackPaste)
+    );
+    assert_eq!(
+        detected_format_for_app("win:exe:Discord.exe"),
+        Some(CopyTarget::Discord)
+    );
+    assert_eq!(
+        detected_format_for_app("mac:bundle:ru.keepcoder.Telegram"),
+        Some(CopyTarget::Telegram)
+    );
+    assert_eq!(
+        detected_format_for_app("mac:bundle:org.whispersystems.signal-desktop"),
+        Some(CopyTarget::Signal)
+    );
+    assert_eq!(
+        detected_format_for_app("mac:bundle:com.microsoft.teams2"),
+        Some(CopyTarget::Teams)
+    );
+    assert_eq!(
+        detected_format_for_app("win:exe:WINWORD.EXE"),
+        Some(CopyTarget::Word)
+    );
+    assert_eq!(
+        detected_format_for_app("mac:bundle:net.whatsapp.WhatsApp"),
+        Some(CopyTarget::Whatsapp)
+    );
+    assert_eq!(
+        detected_format_for_app("mac:bundle:com.apple.MobileSMS"),
+        Some(CopyTarget::Sms)
+    );
+    assert_eq!(
+        detected_format_for_app("mac:bundle:com.example.Editor"),
+        None
+    );
+
+    let mut config = ConfigV2 {
+        last_target: Some(CopyTarget::PlainText),
+        ..ConfigV2::default()
+    };
+    assert_eq!(
+        resolve_shortcut_target(&config, Some(SLACK)),
+        ResolvedTarget {
+            target: CopyTarget::SlackPaste,
+            from_pin: true,
+        }
+    );
+    // Teams is hidden by default, so auto-detect falls back until enabled.
+    assert_eq!(
+        resolve_shortcut_target(&config, Some("mac:bundle:com.microsoft.teams2")),
+        ResolvedTarget {
+            target: CopyTarget::PlainText,
+            from_pin: false,
+        }
+    );
+    config
+        .apply_patch(ConfigPatch {
+            format_visibility: Some(BTreeMap::from([(CopyTarget::Teams, true)])),
+            ..ConfigPatch::default()
+        })
+        .unwrap();
+    assert_eq!(
+        resolve_shortcut_target(&config, Some("mac:bundle:com.microsoft.teams2")),
+        ResolvedTarget {
+            target: CopyTarget::Teams,
+            from_pin: true,
+        }
+    );
+    // Explicit pin overrides built-in auto-detection.
+    set_pinned_format(&mut config, SLACK.into(), Some(CopyTarget::SlackApi));
+    assert_eq!(
+        resolve_shortcut_target(&config, Some(SLACK)),
+        ResolvedTarget {
+            target: CopyTarget::SlackApi,
+            from_pin: true,
+        }
+    );
+    // Disabling auto-detect falls back to last-used format when unpinned.
+    set_pinned_format(&mut config, SLACK.into(), None);
+    config
+        .apply_patch(ConfigPatch {
+            auto_detect_app_format: Some(false),
+            ..ConfigPatch::default()
+        })
+        .unwrap();
+    assert_eq!(
+        resolve_shortcut_target(&config, Some(SLACK)),
+        ResolvedTarget {
+            target: CopyTarget::PlainText,
+            from_pin: false,
+        }
+    );
+
+    // Existing v2 configs saved before auto-detect default to enabled on load.
+    let legacy_v2: ConfigV2 = serde_json::from_value(json!({
+        "schemaVersion": 2,
+        "shortcut": {"code": "KeyC", "ctrl": true, "alt": false, "shift": false, "meta": true},
+        "shortcutEnabled": true,
+        "shortcutMode": "copy-and-pick",
+        "pickerColumns": 4,
+        "hasLaunched": true
+    }))
+    .unwrap();
+    assert!(legacy_v2.auto_detect_app_format);
+}
+
+#[test]
 fn namespacing_matches_the_desktop_application_id_formats() {
     assert_eq!(namespace_app_id("mac", "com.tinyspeck.slackmacgap"), SLACK);
     assert_eq!(namespace_app_id("macos", SLACK), SLACK);
@@ -667,6 +776,7 @@ proptest! {
             format_visibility: visibility.clone(),
             last_target,
             pinned_formats: BTreeMap::from([(SLACK.into(), pin)]),
+            auto_detect_app_format: false,
             ..ConfigV2::default()
         };
         let resolved = resolve_shortcut_target(&config, Some(SLACK));
@@ -674,6 +784,16 @@ proptest! {
             .unwrap_or(pin.definition().enabled_by_default != Some(false));
         prop_assert_eq!(resolved.from_pin, pin_visible);
         prop_assert_eq!(resolved.target, if pin_visible { pin } else { preferred });
+
+        let auto_config = ConfigV2 {
+            format_visibility: visibility,
+            last_target,
+            pinned_formats: BTreeMap::new(),
+            auto_detect_app_format: true,
+            ..ConfigV2::default()
+        };
+        let auto_resolved = resolve_shortcut_target(&auto_config, Some(SLACK));
+        prop_assert!(visible.iter().any(|def| def.id == auto_resolved.target));
     }
 
     #[test]

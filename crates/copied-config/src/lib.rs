@@ -13,8 +13,8 @@ pub use shortcut::{
 };
 pub use store::{default_config_path, load_config, save_config};
 pub use visibility::{
-    ResolvedTarget, namespace_app_id, preferred_format, resolve_shortcut_target,
-    set_format_visible, set_pinned_format, visible_formats,
+    ResolvedTarget, detected_format_for_app, namespace_app_id, preferred_format,
+    resolve_shortcut_target, set_format_visible, set_pinned_format, visible_formats,
 };
 
 #[cfg(test)]

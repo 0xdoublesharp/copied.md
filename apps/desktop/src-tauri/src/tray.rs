@@ -6,7 +6,7 @@ use std::{
     time::Duration,
 };
 
-use copied_config::{ConfigPatch, ShortcutCopyMode, default_shortcut};
+use copied_config::{ConfigPatch, ShortcutCopyMode};
 use copied_platform::{LoginItemStatus, ShortcutCapability};
 use tauri::{
     AppHandle, Manager,
@@ -20,10 +20,11 @@ use crate::{
     DesktopError, DesktopRuntime,
     desktop::{DesktopState, Feedback},
     picker::Panel,
+    toast::{ToastKind, ToastState},
     with_desktop,
 };
 
-const TRAY_ID: &str = "copied-md";
+pub(crate) const TRAY_ID: &str = "copied-md";
 const NORMAL_ICON: &[u8] = include_bytes!("../icons/tray.png");
 const COPIED_ICON: &[u8] = include_bytes!("../icons/tray-copied.png");
 const MODES: [(&str, &str, ShortcutCopyMode); 3] = [
@@ -42,13 +43,11 @@ const MODES: [(&str, &str, ShortcutCopyMode); 3] = [
 
 pub(crate) struct TrayMenu {
     enabled: CheckMenuItem<tauri::Wry>,
-    recording: MenuItem<tauri::Wry>,
-    pin: MenuItem<tauri::Wry>,
-    reset: MenuItem<tauri::Wry>,
     modes: Vec<(ShortcutCopyMode, CheckMenuItem<tauri::Wry>)>,
     login: CheckMenuItem<tauri::Wry>,
     shortcut_failure: MenuItem<tauri::Wry>,
     flash_generation: Arc<AtomicU64>,
+    toast: ToastState,
     menu: Menu<tauri::Wry>,
 }
 
@@ -63,13 +62,6 @@ impl TrayMenu {
             false,
             None::<&str>,
         )?;
-        let recording = MenuItem::with_id(
-            app,
-            "shortcut-record",
-            "Change Keyboard Shortcut…",
-            true,
-            None::<&str>,
-        )?;
         let behavior = Submenu::new(app, "Shortcut Behavior", true)?;
         let mut modes = Vec::with_capacity(MODES.len());
         for (id, title, mode) in MODES {
@@ -78,20 +70,6 @@ impl TrayMenu {
             modes.push((mode, item));
         }
 
-        let pin = MenuItem::with_id(
-            app,
-            "pin",
-            "Choose Format for Active App…",
-            true,
-            None::<&str>,
-        )?;
-        let reset = MenuItem::with_id(
-            app,
-            "shortcut-reset",
-            "Reset to Default Shortcut",
-            true,
-            None::<&str>,
-        )?;
         let login =
             CheckMenuItem::with_id(app, "login", "Launch at Login", true, false, None::<&str>)?;
         let settings = MenuItem::with_id(app, "settings", "Settings…", true, None::<&str>)?;
@@ -105,9 +83,6 @@ impl TrayMenu {
                 &PredefinedMenuItem::separator(app)?,
                 &behavior,
                 &enabled,
-                &recording,
-                &reset,
-                &pin,
                 &PredefinedMenuItem::separator(app)?,
                 &settings,
                 &login,
@@ -133,13 +108,11 @@ impl TrayMenu {
             .build(app)?;
         Ok(Self {
             enabled,
-            recording,
-            pin,
-            reset,
             modes,
             login,
             shortcut_failure,
             flash_generation: Arc::default(),
+            toast: ToastState::default(),
             menu,
         })
     }
@@ -148,34 +121,18 @@ impl TrayMenu {
         let direct = state.capabilities.global_shortcuts == ShortcutCapability::Direct;
         self.enabled.set_enabled(direct)?;
         self.enabled.set_checked(state.shortcut_registered)?;
-        self.recording.set_enabled(direct)?;
-        self.reset.set_enabled(
-            direct && (state.config.shortcut != default_shortcut() || !state.shortcut_registered),
-        )?;
         let failure = state.shortcut_failure.as_deref();
         self.shortcut_failure.set_text(failure.unwrap_or(""))?;
         // Menu items lack a portable visibility switch. Insert or remove the status row.
         let inserted = self.menu.get(self.shortcut_failure.id()).is_some();
         if failure.is_some() && !inserted {
-            self.menu.insert(&self.shortcut_failure, 6)?;
+            self.menu.insert(&self.shortcut_failure, 4)?;
         } else if failure.is_none() && inserted {
             self.menu.remove(&self.shortcut_failure)?;
         }
         for (mode, item) in &self.modes {
             item.set_checked(state.config.shortcut_mode == *mode)?;
         }
-        self.pin
-            .set_enabled(state.capabilities.active_app_detection)?;
-        let pin = if cfg!(target_os = "linux") {
-            // Linux tray integrations do not consistently send mouse events before opening.
-            "Choose Format for Active App…".into()
-        } else {
-            state.active_app.as_ref().map_or_else(
-                || "Choose Format for Active App…".into(),
-                |app| format!("Choose Format for {}…", app.name),
-            )
-        };
-        self.pin.set_text(pin)?;
         self.login.set_enabled(state.capabilities.launch_at_login)?;
         self.login.set_checked(matches!(
             state.login_item_status,
@@ -196,14 +153,12 @@ impl TrayMenu {
             match event {
                 Feedback::Copied(target) => self.flash(app, target.definition().label.as_ref()),
                 Feedback::Warning(title, detail) => {
-                    dialog(app, &title, &detail, MessageDialogKind::Warning)
+                    self.toast.show(app, ToastKind::Warning, &title, &detail);
                 }
-                Feedback::Error(error) => dialog(
-                    app,
-                    "Could not copy Markdown",
-                    &error,
-                    MessageDialogKind::Error,
-                ),
+                Feedback::Error(error) => {
+                    self.toast
+                        .show(app, ToastKind::Error, "Could not copy Markdown", &error);
+                }
             }
         }
     }
@@ -304,12 +259,17 @@ pub(crate) fn present_operation_error(app: &AppHandle, result: Result<(), Deskto
             DesktopError::Engine(copied_engine::EngineError::Clipboard(_))
         )
     {
-        dialog(
-            app,
-            "copied.md",
-            &error.to_string(),
-            MessageDialogKind::Error,
-        );
+        if let Some(menu) = app.try_state::<TrayMenu>() {
+            menu.toast
+                .show(app, ToastKind::Error, "copied.md", &error.to_string());
+        } else {
+            dialog(
+                app,
+                "copied.md",
+                &error.to_string(),
+                MessageDialogKind::Error,
+            );
+        }
     }
 }
 

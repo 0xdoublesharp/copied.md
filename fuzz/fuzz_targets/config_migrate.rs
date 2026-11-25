@@ -160,6 +160,7 @@ impl Config {
                 .take(8)
                 .map(|(id, index)| (id.clone(), target(*index)))
                 .collect(),
+            auto_detect_app_format: true,
             has_launched: self.has_launched,
         }
     }
@@ -215,17 +216,23 @@ fn check_selection(config: &ConfigV2, app_ids: &[Option<String>]) {
             "hidden target in {config:?}"
         );
         let pin = app_id.as_ref().and_then(|id| config.pinned_formats.get(id));
-        if resolved.from_pin {
-            assert_eq!(pin, Some(&resolved.target));
-        } else {
-            assert_eq!(resolved.target, preferred);
-        }
-        if let Some(&pin) = pin {
-            assert_eq!(
-                resolved.from_pin,
-                pin_visible(config, pin),
-                "pin {pin} in {config:?}"
-            );
+        let detected = app_id
+            .as_deref()
+            .filter(|_| config.auto_detect_app_format)
+            .and_then(copied_config::detected_format_for_app);
+        let expected_app_target = pin
+            .copied()
+            .filter(|&target| pin_visible(config, target))
+            .or_else(|| detected.filter(|&target| pin_visible(config, target)));
+        match expected_app_target {
+            Some(target) => {
+                assert!(resolved.from_pin, "expected app target {target} in {config:?}");
+                assert_eq!(resolved.target, target);
+            }
+            None => {
+                assert!(!resolved.from_pin, "unexpected app target in {config:?}");
+                assert_eq!(resolved.target, preferred);
+            }
         }
     }
 }

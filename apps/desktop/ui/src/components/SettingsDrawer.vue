@@ -221,10 +221,22 @@ onMounted(() => {
 
       <fieldset :disabled="busy || recording">
         <legend>Per-app format</legend>
+        <label v-if="state.capabilities.activeAppDetection">
+          <input
+            type="checkbox"
+            :checked="state.config.autoDetectAppFormat"
+            @click.prevent="
+              saveConfig(() =>
+                api.updateConfig({ autoDetectAppFormat: !state.config.autoDetectAppFormat }),
+              )
+            "
+          />
+          Auto-detect destination app (Slack, Signal, Telegram, Discord, Teams, Word, WhatsApp)
+        </label>
         <label v-if="activeApp" class="stacked-label">
-          {{ activeApp.name }}
+          Override for {{ activeApp.name }}
           <select ref="appPinSelect" :value="appPin ?? ''" @change="setPin">
-            <option value="">Use Last-Used Format</option>
+            <option value="">Auto / Last-Used Format</option>
             <option
               v-for="target in state.targets"
               :key="target.id"
@@ -239,7 +251,7 @@ onMounted(() => {
           Per-app formats are unavailable on Wayland or when the desktop cannot identify the active
           app.
         </p>
-        <p v-else>Focus an app and reopen Settings to choose its format.</p>
+        <p v-else>Focus an app and reopen Settings to override its format.</p>
       </fieldset>
 
       <fieldset v-if="panel !== 'app-pin'" :disabled="busy">

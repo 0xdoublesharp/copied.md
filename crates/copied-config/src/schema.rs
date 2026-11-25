@@ -8,6 +8,10 @@ use thiserror::Error;
 pub(crate) const SCHEMA_VERSION: u8 = 2;
 pub(crate) const DEFAULT_PICKER_COLUMNS: u8 = 4;
 
+const fn default_true() -> bool {
+    true
+}
+
 /// Behavior when the global keyboard shortcut fires.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
@@ -33,6 +37,8 @@ pub struct ConfigV2 {
     pub picker_columns: u8,
     #[serde(default)]
     pub pinned_formats: BTreeMap<String, CopyTarget>,
+    #[serde(default = "default_true")]
+    pub auto_detect_app_format: bool,
     #[serde(default)]
     pub has_launched: bool,
 }
@@ -48,6 +54,7 @@ impl Default for ConfigV2 {
             format_visibility: BTreeMap::new(),
             picker_columns: DEFAULT_PICKER_COLUMNS,
             pinned_formats: BTreeMap::new(),
+            auto_detect_app_format: true,
             has_launched: false,
         }
     }
@@ -76,6 +83,8 @@ pub struct ConfigPatch {
     /// A null value removes the pin for that app ID.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub pinned_formats: Option<BTreeMap<String, Option<CopyTarget>>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub auto_detect_app_format: Option<bool>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub has_launched: Option<bool>,
 }
@@ -109,6 +118,9 @@ impl ConfigV2 {
         updated.shortcut_mode = patch.shortcut_mode.unwrap_or(updated.shortcut_mode);
         updated.last_target = patch.last_target.unwrap_or(updated.last_target);
         updated.picker_columns = patch.picker_columns.unwrap_or(updated.picker_columns);
+        updated.auto_detect_app_format = patch
+            .auto_detect_app_format
+            .unwrap_or(updated.auto_detect_app_format);
         updated.has_launched = patch.has_launched.unwrap_or(updated.has_launched);
         for (id, target) in patch.pinned_formats.into_iter().flatten() {
             crate::set_pinned_format(&mut updated, id, target);

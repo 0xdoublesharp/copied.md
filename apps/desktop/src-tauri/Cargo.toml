@@ -34,8 +34,10 @@ tempfile = "3"
 
 [target.'cfg(target_os = "macos")'.dependencies]
 objc2 = "0.6"
-objc2-app-kit = { version = "0.3", default-features = false, features = ["std", "NSApplication", "NSRunningApplication", "NSWorkspace"] }
-objc2-foundation = { version = "0.3", default-features = false, features = ["std", "NSArray", "NSData", "NSDictionary", "NSObjCRuntime", "NSValue", "NSString", "NSUserDefaults"] }
+objc2-app-kit = { version = "0.3", default-features = false, features = ["std", "NSApplication", "NSBox", "NSColor", "NSControl", "NSFont", "NSPanel", "NSResponder", "NSRunningApplication", "NSScreen", "NSText", "NSTextField", "NSView", "NSVisualEffectView", "NSWindow", "NSWorkspace"] }
+objc2-core-foundation = { version = "0.3", default-features = false, features = ["std", "CFCGTypes"] }
+objc2-foundation = { version = "0.3", default-features = false, features = ["std", "NSArray", "NSData", "NSDictionary", "NSGeometry", "NSObjCRuntime", "NSValue", "NSString", "NSUserDefaults"] }
+objc2-quartz-core = { version = "0.3", default-features = false, features = ["std", "CALayer"] }
 
 [dev-dependencies]
 tauri = { version = "2", features = ["test"] }

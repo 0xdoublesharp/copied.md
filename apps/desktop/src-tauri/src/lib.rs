@@ -13,6 +13,7 @@ mod desktop;
 mod picker;
 mod platform;
 mod self_test;
+mod toast;
 mod tray;
 
 use desktop::{Desktop, DesktopNotifier, Feedback};

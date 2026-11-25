@@ -32,6 +32,7 @@ export interface ConfigV2 {
   formatVisibility: Partial<Record<CopyTarget, boolean>>;
   pickerColumns: Columns;
   pinnedFormats: Record<string, CopyTarget>;
+  autoDetectAppFormat: boolean;
   hasLaunched: boolean;
 }
 
