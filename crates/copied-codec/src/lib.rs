@@ -48,10 +48,12 @@ impl fmt::Display for CodecError {
 impl std::error::Error for CodecError {}
 
 /// Parsed byte offsets for Windows `CF_HTML` clipboard payloads.
+///
+/// Both HTML offsets are `None` when the payload contains only a fragment.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct CfHtmlOffsets {
-    pub start_html: usize,
-    pub end_html: usize,
+    pub start_html: Option<usize>,
+    pub end_html: Option<usize>,
     pub start_fragment: usize,
     pub end_fragment: usize,
 }

@@ -69,6 +69,19 @@ mod tests {
     use super::*;
 
     #[test]
+    fn windows_html_reads_markerless_fragment_without_context() {
+        let envelope = concat!(
+            "Version:0.9\r\nStartHTML:-1\r\nEndHTML:-1\r\n",
+            "StartFragment:0000000089\r\nEndFragment:0000000106\r\n",
+            "<p>Café 🚀</p>\0",
+        );
+        assert_eq!(
+            windows_html_fragment(envelope.as_bytes()).unwrap(),
+            "<p>Café 🚀</p>"
+        );
+    }
+
+    #[test]
     fn wire_flavors_use_codec_outputs() {
         let payload = ClipboardPayload {
             plain: "example".into(),

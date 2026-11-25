@@ -30,10 +30,10 @@ proptest! {
     fn cf_html_round_trip(fragment in any::<String>()) {
         let payload = encode_cf_html(&fragment);
         let offsets = parse_cf_html(&payload).unwrap();
-        prop_assert!(offsets.start_html < offsets.start_fragment);
+        prop_assert!(offsets.start_html.unwrap() < offsets.start_fragment);
         prop_assert!(offsets.start_fragment <= offsets.end_fragment);
-        prop_assert!(offsets.end_fragment < offsets.end_html);
-        prop_assert_eq!(offsets.end_html, payload.len());
+        prop_assert!(offsets.end_fragment < offsets.end_html.unwrap());
+        prop_assert_eq!(offsets.end_html, Some(payload.len()));
         prop_assert_eq!(&payload[offsets.start_fragment..offsets.end_fragment], fragment.as_str());
     }
 
